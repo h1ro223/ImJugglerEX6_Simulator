@@ -1,0 +1,2 @@
+# ImJugglerEX6_Simulator
+アイムジャグラーex 6号機のシミュレーターです
