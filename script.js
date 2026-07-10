@@ -544,8 +544,7 @@ class Reel {
       p = mod(p, KOMA);
     }
     this.strip.style.transform = `translate3d(0, ${(-p * this.cellH).toFixed(2)}px, 0)`;
-    const fast = (this.mode === 'spin' && this.v > SPEED * 0.55);
-    this.strip.classList.toggle('blur', fast);
+    // ぼかしは目押しの妨げになるため廃止(常にクッキリ表示)
   }
   resize(cellH) {
     this.cellH = cellH;
