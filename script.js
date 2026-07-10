@@ -65,7 +65,7 @@ const TARGETS = {
 const MAX_SLIP   = 4;      // 最大4コマ引き込み
 const REV_MS     = 780;    // 1回転にかかる時間(ms) 約77rpm
 const SPEED      = KOMA / REV_MS;  // コマ/ms
-const curSpeed   = () => state.easyMode ? SPEED / 2 : SPEED; // 簡単モードは1/2速
+const curSpeed   = () => SPEED * state.reelSpeed; // リール回転速度倍率を適用
 const DECEL_KOMA = 1.05;   // 減速に使うコマ数
 const WAIT_MS    = 4100;   // ゲーム間ウェイト(4.1秒規定)
 const BB_LIMIT   = 280;    // BB: 280枚を超える払い出しで終了
@@ -105,12 +105,11 @@ const state = {
   pendingHist: null,   // 進行中ボーナスの履歴 {g, t}
   kaishuYen: 0,        // 回収額(精算で円に変換した合計)
   forceBonus: false,   // 次ゲームでGOGO!確定(1回)
-  easyMode: false,     // リール回転速度1/2
+  reelSpeed: 1,        // リール回転速度倍率 (0.25 / 0.5 / 1)
   autoMode: false,     // Auto Mode
   msgBarOn: false,     // メッセージバー表示 (デフォルトOFF)
   payTarget: 0,        // PAY OUT表示の目標値 (カウントアップ演出用)
   gogoSndEnd: 0,       // GOGOCHANCE.mp3の再生終了時刻 (SE被り防止)
-  assist: false,
   bgmOn: true,
   seOn: true,
   bgmVol: 0.5,
@@ -248,7 +247,7 @@ const audio = {
   get1Loop(coins) {
     if (!state.seOn) return;
     const n = Math.max(0, coins - 1);
-    const INTERVAL = 110;
+    const INTERVAL = 50; // Get1.mp3ループ間隔(数字カウントと同期)
     let i = 0;
     const tick = () => {
       if (i < n) { this.playSE('GET1', true); i++; setTimeout(tick, INTERVAL); }
@@ -264,7 +263,7 @@ const el = {
   dpBB: $('dpBB'), dpRB: $('dpRB'), dpStart: $('dpStart'), dpTotal: $('dpTotal'), dpGosei: $('dpGosei'),
   wMochi: $('wMochi'), wInvest: $('wInvest'), wDiff: $('wDiff'),
   segCredit: $('segCredit'), segBonus: $('segBonus'), segPayout: $('segPayout'),
-  msgBar: $('msgBar'), gogoLamp: $('gogoLamp'), gogoImg: $('gogoImg'),
+  msgBar: $('msgBar'), gogoLamp: $('gogoLamp'), gogoImg: $('gogoImg'), gogoImgOn: $('gogoImgOn'),
   lever: $('lever'), reelWindow: $('reelWindow'), topBanner: $('topBanner'),
   betLamps: [$('betLamp1'), $('betLamp2'), $('betLamp3')],
   lampStart: $('lampStart'), lampReplay: $('lampReplay'), lampWait: $('lampWait'), lampInsert: $('lampInsert'),
@@ -272,8 +271,8 @@ const el = {
   btnRent: $('btnRent'), btnBet1: $('btnBet1'), btnMaxBet: $('btnMaxBet'),
   btnPayback: $('btnPayback'), btnMenu: $('btnMenu'),
   modalOverlay: $('modalOverlay'), currentSetting: $('currentSetting'),
-  chkAssist: $('chkAssist'), chkBgm: $('chkBgm'), chkSe: $('chkSe'),
-  chkEasy: $('chkEasy'), chkAuto: $('chkAuto'), btnForcePeka: $('btnForcePeka'),
+  chkBgm: $('chkBgm'), chkSe: $('chkSe'),
+  chkAuto: $('chkAuto'), btnForcePeka: $('btnForcePeka'),
   chkMsgBar: $('chkMsgBar'),
   volBgm: $('volBgm'), volSe: $('volSe'), bonusGraph: $('bonusGraph'),
   wKaishu: $('wKaishu')
@@ -357,15 +356,12 @@ function chooseStopPosition(reelIdx, curPos) {
   } else if (state.bonusFlag) allowed.add(state.bonusFlag);
 
   const target = flagRole ? TARGETS[flagRole] : null;
-  // 目押しアシストON時はボーナス図柄を全域引き込み
-  const isBonusAim = !state.smallFlag && !!state.bonusFlag;
-  const maxSlip = (state.assist && isBonusAim) ? KOMA - 1 : MAX_SLIP;
 
-  // 押した位置からの候補(ビタ〜スベリ)
+  // 押した位置からの候補(ビタ〜スベリ 最大4コマ)
   let base = Math.floor(curPos);
   if (curPos - base < 0.2) base = base - 1; // 最低限の移動距離を確保
   const candidates = [];
-  for (let s = 0; s <= maxSlip; s++) candidates.push({ slip: s, p: modK(base - s) });
+  for (let s = 0; s <= MAX_SLIP; s++) candidates.push({ slip: s, p: modK(base - s) });
 
   const scoreOf = (cand) => {
     const col = windowCol(reelIdx, cand.p);
@@ -414,18 +410,44 @@ function chooseStopPosition(reelIdx, curPos) {
       }
       if (sure) guaranteed++;
     });
+    // ブドウ: ライン数を稼がず「成立可能な形」を全て同格に扱う(出目バリエーション用)
+    if (flagRole === 'GRAPE') {
+      return penalty + (guaranteed > 0 ? 0 : (live > 0 ? 50 : 100));
+    }
     // 保証ラインを最優先 → live数 → スベリ少で選択
     return penalty + (guaranteed > 0 ? 0 : 100) + (10 - live);
   };
 
-  let best = null, bestScore = Infinity;
+  let bestScore = Infinity;
   for (const cand of candidates) {
-    const sc = scoreOf(cand);
-    if (sc < bestScore || (sc === bestScore && best && cand.slip < best.slip)) {
-      bestScore = sc; best = cand;
-    }
+    cand.score = scoreOf(cand);
+    if (cand.score < bestScore) bestScore = cand.score;
   }
-  return best.p;
+  const bestList = candidates.filter(c => c.score === bestScore); // スベリ昇順のまま
+  /* ブドウは到達可能な成立パターン全てから毎回ランダムに1つ選ぶ(斜め偏り防止) */
+  if (flagRole === 'GRAPE' && bestList.length > 1) {
+    return bestList[Math.floor(Math.random() * bestList.length)].p;
+  }
+  return bestList[0].p; // 通常は最小スベリ
+}
+
+/* Auto Mode用: 今押せばボーナス図柄を有効ラインに引き込めるか(人間の目押し相当) */
+function bonusAimOk(reelIdx, pos) {
+  if (!state.bonusFlag || state.smallFlag) return true; // 狙う必要のないゲーム
+  const target = TARGETS[state.bonusFlag];
+  const p = chooseStopPosition(reelIdx, pos);
+  const cols = state.cols.slice();
+  cols[reelIdx] = windowCol(reelIdx, p);
+  return LINES.some(rows => {
+    for (let c = 0; c < 3; c++) {
+      const t = target[c];
+      if (t == null) continue;
+      const cc = cols[c];
+      if (!cc) continue; // 未停止リールは後で狙う
+      if (cc[rows[c]] !== t) return false;
+    }
+    return true;
+  });
 }
 
 /* ================= リール描画 & アニメーション ================= */
@@ -600,7 +622,7 @@ function addBet(n) {
   state.bet = newBet;
   state.totalIn += need;
   audio.playSE('BET', true); // 重ね再生可
-  animateMedals(200); // 1枚ずつ減らして表示
+  animateMedals(50); // 1枚ずつ減らして表示
   updateUI();
 }
 
@@ -613,7 +635,7 @@ function setMaxBet() {
   state.bet = max;
   state.totalIn += need;
   audio.playSE('MAXBET3'); // 通常時3枚BET
-  animateMedals(200); // 1枚ずつ減らして表示
+  animateMedals(50); // 1枚ずつ減らして表示
   updateUI();
 }
 
@@ -632,7 +654,7 @@ function leverOn() {
       state.bet = 2;
       state.totalIn += 2;
       audio.playSE('MAXBET2'); // ボーナス中は2枚BET固定
-      animateMedals(200);
+      animateMedals(50);
       autoBetDelay = 1000;
     }
   } else if (state.bet === 0) {
@@ -641,7 +663,7 @@ function leverOn() {
     state.bet = 3;
     state.totalIn += 3;
     audio.playSE('MAXBET3');
-    animateMedals(200);
+    animateMedals(50);
     autoBetDelay = 1000;
   }
 
@@ -781,7 +803,7 @@ function onStopRelease() {
 function lightLamp() {
   state.lampLit = true;
   state.lampPending = false;
-  el.gogoImg.src = './GOGO/GOGOCHANCE_1.png';
+  el.gogoImgOn.hidden = false; // 事前読込済みの点灯画像を即時表示(音と同時)
   el.gogoLamp.classList.add('lit');
   el.gogoLamp.classList.toggle('rainbow', state.rareLamp); // 中段チェリー時はレインボー
   audio.playSE('GOGO');
@@ -792,7 +814,7 @@ function unlightLamp() {
   state.lampLit = false;
   state.lampPending = false;
   state.rareLamp = false;
-  el.gogoImg.src = './GOGO/GOGOCHANCE_0.png';
+  el.gogoImgOn.hidden = true;
   el.gogoLamp.classList.remove('lit', 'rainbow');
 }
 
@@ -842,12 +864,12 @@ function resolveGame() {
         if (gogoWait > 0) setTimeout(() => audio.playSE(key), gogoWait);
         else audio.playSE(key);
         sndMs = audio.duration(key, 900);
-        animateMedals(200, gogoWait); // 0.2秒おきに1枚ずつ加算表示
+        animateMedals(50, gogoWait); // 0.05秒おきに1枚ずつ加算表示
       } else {
         if (gogoWait > 0) setTimeout(() => audio.get1Loop(pay), gogoWait);
         else audio.get1Loop(pay); // ピエロ・チェリー等: (枚数-1)回ループ後にGet1Finish
-        sndMs = Math.max(0, pay - 1) * 110 + audio.duration('GET1FIN', 500);
-        animateMedals(110, gogoWait); // Get1.mp3の間隔(110ms)に同期して加算表示
+        sndMs = Math.max(0, pay - 1) * 50 + audio.duration('GET1FIN', 500);
+        animateMedals(50, gogoWait); // Get1.mp3の間隔(50ms)に同期して加算表示
       }
       /* Get系mp3の再生が終わるまで操作不可(Lever音との被り防止) */
       payoutSndMs = gogoWait + sndMs;
@@ -992,18 +1014,33 @@ function autoClearTimers() {
 }
 /* レバーON後: Lever.mp3終了+1秒で第1停止 → 0.15秒間隔で第2・第3停止 */
 function scheduleAutoStops() {
-  const base = audio.duration('LEVER', 300) + 1000;
+  const base = audio.duration('LEVER', 300) + 1000; // Lever.mp3終了から1秒後に第1停止へ
   autoSchedule(() => autoPress(0), base);
-  autoSchedule(() => autoPress(1), base + 150);
-  autoSchedule(() => autoPress(2), base + 300);
 }
 function autoPress(i) {
   if (state.gamePhase !== 'spinning') return;
+  const r = reels[i];
+  /* リールが定速に達するまで待つ */
+  if (r.mode !== 'spin' || r.v < curSpeed() * 0.95) {
+    autoSchedule(() => autoPress(i), 60);
+    return;
+  }
+  /* GOGO!CHANCE中は7(RBは右BAR)を引き込める瞬間までポーリングして押す(人間の目押し風) */
+  if (!bonusAimOk(i, r.pos)) {
+    if (!r.autoAimStart) r.autoAimStart = performance.now();
+    if (performance.now() - r.autoAimStart < 5000) {
+      autoSchedule(() => autoPress(i), 30);
+      return;
+    }
+    /* 5秒狙えなければ諦めて押す(保険・通常発生しない) */
+  }
+  r.autoAimStart = 0;
   pressStop(i);
   autoSchedule(() => {
     el.stopBtns[i].classList.remove('pushed');
     if (i === 2) onStopRelease(); // 第3停止ボタンを離す(後ペカ発生タイミング)
   }, 180);
+  if (i < 2) autoSchedule(() => autoPress(i + 1), 150); // 次のボタンまで0.15秒
 }
 /* 次ゲームへ (betLock/payoutLock中はリトライ) */
 function autoNextGame(delayMs) {
@@ -1166,7 +1203,7 @@ function saveGame() {
       replayPending: state.replayPending,
       history: state.history, pendingHist: state.pendingHist,
       rareLamp: state.rareLamp, kaishuYen: state.kaishuYen,
-      assist: state.assist, easyMode: state.easyMode, msgBarOn: state.msgBarOn,
+      reelSpeed: state.reelSpeed, msgBarOn: state.msgBarOn,
       bgmOn: state.bgmOn, seOn: state.seOn,
       bgmVol: state.bgmVol, seVol: state.seVol
     };
@@ -1198,8 +1235,8 @@ function loadGame() {
     state.history = Array.isArray(d.history) ? d.history.slice(0, 9) : [];
     state.pendingHist = d.pendingHist || null;
     state.rareLamp = !!d.rareLamp;
-    state.assist = !!d.assist;
-    state.easyMode = !!d.easyMode;
+    state.reelSpeed = [0.25, 0.5, 1].includes(d.reelSpeed) ? d.reelSpeed : (d.easyMode ? 0.5 : 1); // 旧簡単モードは0.5に移行
+
     state.msgBarOn = d.msgBarOn === true; // デフォルトOFF
     state.bgmOn = d.bgmOn !== false && d.sound !== false;
     state.seOn = d.seOn !== false && d.sound !== false;
@@ -1238,8 +1275,8 @@ function resetAll() {
 function openModal() {
   if (state.gamePhase !== 'idle') return;
   el.modalOverlay.hidden = false;
-  el.chkAssist.checked = state.assist;
-  el.chkEasy.checked = state.easyMode;
+  refreshSpeedBtns();
+
   el.chkMsgBar.checked = state.msgBarOn;
   el.chkAuto.checked = state.autoMode;
   el.chkBgm.checked = state.bgmOn;
@@ -1259,6 +1296,11 @@ function refreshSettingBtns() {
     btn.classList.toggle('selected', Number(btn.dataset.s) === state.setting);
   });
   el.currentSetting.textContent = `現在:設定${state.setting}`;
+}
+function refreshSpeedBtns() {
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.classList.toggle('selected', Number(btn.dataset.v) === state.reelSpeed);
+  });
 }
 
 /* ================= イベント登録 ================= */
@@ -1288,8 +1330,14 @@ function bindEvents() {
       saveGame();
     });
   });
-  el.chkAssist.addEventListener('change', () => { state.assist = el.chkAssist.checked; saveGame(); });
-  el.chkEasy.addEventListener('change', () => { state.easyMode = el.chkEasy.checked; saveGame(); });
+
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.reelSpeed = Number(btn.dataset.v);
+      refreshSpeedBtns();
+      saveGame();
+    });
+  });
   el.chkMsgBar.addEventListener('change', () => { state.msgBarOn = el.chkMsgBar.checked; applyMsgBar(); saveGame(); });
   el.chkAuto.addEventListener('change', () => {
     state.autoMode = el.chkAuto.checked;

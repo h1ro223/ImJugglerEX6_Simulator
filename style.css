@@ -201,6 +201,8 @@ html, body {
 #underReel { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 #gogoLamp { width: 30%; max-width: 120px; flex-shrink: 0; position: relative; }
 #gogoLamp img { width: 100%; display: block; border-radius: 8px; }
+#gogoImgOn { position: absolute; inset: 0; } /* 点灯画像を重ねて即時切り替え(フェード防止) */
+#gogoLamp img[hidden] { display: none; }
 #gogoLamp.lit img { animation: gogoGlow 1s ease-in-out infinite; }
 #gogoLamp.lit.rainbow img { animation: gogoRainbow 1.4s linear infinite; }
 @keyframes gogoRainbow {
@@ -326,12 +328,14 @@ html, body {
 .modal-section { margin-bottom: 14px; }
 .modal-section h3 { font-size: 13px; color: #cdd; border-bottom: 1px solid #444; padding-bottom: 4px; margin-bottom: 8px; }
 .current-setting { float: right; font-size: 11px; color: #7fd4ff; }
-#settingBtns { display: flex; gap: 6px; }
-.setting-btn {
+#settingBtns, #speedBtns { display: flex; gap: 6px; }
+#speedBtns { margin-bottom: 4px; }
+.setting-btn, .speed-btn {
   flex: 1; padding: 10px 0; border-radius: 8px; font-size: 15px; font-weight: bold;
   background: #33333c; color: #ccc; border: 1px solid #555; cursor: pointer;
 }
-.setting-btn.selected { background: linear-gradient(180deg,#ffb62e,#d17700); color: #402800; border-color: #ffda8a; box-shadow: 0 0 10px rgba(255,182,46,.6); }
+.speed-btn { font-size: 13px; padding: 8px 0; }
+.setting-btn.selected, .speed-btn.selected { background: linear-gradient(180deg,#ffb62e,#d17700); color: #402800; border-color: #ffda8a; box-shadow: 0 0 10px rgba(255,182,46,.6); }
 .toggle-row {
   display: flex; justify-content: space-between; align-items: center;
   font-size: 13px; padding: 8px 2px; cursor: pointer; color: #eee;

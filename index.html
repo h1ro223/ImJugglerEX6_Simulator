@@ -97,6 +97,7 @@
       <div id="underReel">
         <div id="gogoLamp">
           <img id="gogoImg" src="./GOGO/GOGOCHANCE_0.png" alt="GOGO!CHANCE" draggable="false">
+          <img id="gogoImgOn" src="./GOGO/GOGOCHANCE_1.png" alt="" draggable="false" hidden>
         </div>
         <div id="segArea">
           <div class="seg-box">
@@ -164,14 +165,12 @@
       </div>
       <div class="modal-section">
         <h3>オプション</h3>
-        <label class="toggle-row">
-          <span>目押しアシスト<small>(ボーナス図柄を自動で引き込み)</small></span>
-          <input type="checkbox" id="chkAssist">
-        </label>
-        <label class="toggle-row">
-          <span>簡単モード<small>(リールの回転速度を1/2にします)</small></span>
-          <input type="checkbox" id="chkEasy">
-        </label>
+        <div class="toggle-row"><span>リール回転速度</span></div>
+        <div id="speedBtns">
+          <button class="speed-btn" data-v="0.25">×0.25</button>
+          <button class="speed-btn" data-v="0.5">×0.5</button>
+          <button class="speed-btn" data-v="1">×1.0</button>
+        </div>
         <label class="toggle-row">
           <span>Auto Mode<small>(自動でプレイし続けます)</small></span>
           <input type="checkbox" id="chkAuto">
