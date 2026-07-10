@@ -71,7 +71,7 @@ const WAIT_MS    = 4100;   // ゲーム間ウェイト(4.1秒規定)
 const BB_LIMIT   = 280;    // BB: 280枚を超える払い出しで終了
 const RB_LIMIT   = 98;     // RB: 98枚を超える払い出しで終了
 const PAY_CAP    = 15;     // 1ゲームの払い出し上限
-const COUNT_MS   = 125;    // メダル数字カウント & Get1.mp3ループ間隔 (調整用)
+const COUNT_MS   = 100;    // メダル数字カウント & Get1.mp3ループ間隔 (調整用)
 const CREDIT_MAX = 50;
 const SAVE_KEY   = 'imjuggler_ex_6_save_v1';
 
