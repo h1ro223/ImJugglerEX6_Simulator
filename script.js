@@ -1516,11 +1516,14 @@ function closeModal() {
   el.modalOverlay.hidden = true;
   closeSubOverlays();
 }
+let stopSoundRoom = null; // bindEventsで実体をセット(サウンドルーム停止用フック)
 function closeSubOverlays() {
   $('machineOverlay').hidden = true;
   $('systemOverlay').hidden = true;
   $('customOverlay').hidden = true;
   $('challengeOverlay').hidden = true;
+  if (stopSoundRoom) stopSoundRoom();
+  $('soundOverlay').hidden = true;
   $('confirmOverlay').hidden = true;
 }
 
@@ -1776,6 +1779,120 @@ function bindEvents() {
   });
   $('btnCloseChallenge').addEventListener('click', () => { $('challengeOverlay').hidden = true; });
   $('challengeOverlay').addEventListener('click', e => { if (e.target === $('challengeOverlay')) $('challengeOverlay').hidden = true; });
+
+  /* --- サウンドルーム (音楽プレイヤー) --- */
+  const SR_TRACKS = [
+    { g: '通常ver',       key: 'BBHIT1',      name: 'BB当選ファンファーレ 1' },
+    { g: '通常ver',       key: 'BBHIT2',      name: 'BB当選ファンファーレ 2' },
+    { g: '通常ver',       key: 'BB',          name: 'BB中BGM' },
+    { g: '通常ver',       key: 'BBFINISH',    name: 'BB終了' },
+    { g: 'シークレットver', key: 'BBHITSP',    name: 'BB当選 (シークレット)' },
+    { g: 'シークレットver', key: 'BBSP',       name: 'BB中BGM (シークレット)' },
+    { g: 'シークレットver', key: 'BBFINISHSP', name: 'BB終了 (シークレット)' },
+    { g: '第九ver',       key: 'BBHITD9',     name: 'BB当選 (第九)' },
+    { g: '第九ver',       key: 'BBD9',        name: 'BB中BGM (第九)' },
+    { g: '第九ver',       key: 'BBFINISHD9',  name: 'BB終了 (第九)' },
+    { g: '777ver',        key: 'BBHITX',      name: 'BB当選 (777)' },
+    { g: '777ver',        key: 'BBX',         name: 'BB中BGM (777)' },
+    { g: '777ver',        key: 'BBFINISHX',   name: 'BB終了 (777)' },
+    { g: '運命ver',       key: 'BBHITUNMEI',  name: 'BB当選 (運命)' },
+    { g: '運命ver',       key: 'BBUNMEI',     name: 'BB中BGM (運命)' },
+    { g: '運命ver',       key: 'BBFINISHUNMEI', name: 'BB終了 (運命)' },
+    { g: 'REGULAR BONUS', key: 'RB',          name: 'RB中BGM' }
+  ];
+  const srAudio = new Audio();
+  let srIdx = -1, srLoop = false, srVol = 0.5;
+  const srFmt = s => { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  function srApplyVol() { srAudio.volume = Math.min(1, srVol * (srIdx >= 0 ? (BGM_VOL_MULT[SR_TRACKS[srIdx].key] || 1) : 1)); }
+  function srRefreshList() {
+    document.querySelectorAll('.sr-track').forEach((elm, i) => {
+      const playing = i === srIdx && !srAudio.paused;
+      elm.classList.toggle('playing', i === srIdx);
+      elm.querySelector('.sr-icon').textContent = playing ? '♪' : '▶';
+    });
+    $('srPlay').textContent = (srIdx >= 0 && !srAudio.paused) ? '⏸' : '▶';
+    $('srTitle').textContent = srIdx >= 0 ? SR_TRACKS[srIdx].name : '曲を選んでください';
+    $('srSeek').disabled = srIdx < 0;
+  }
+  function srPlayTrack(i) {
+    if (state.inBonus) { askConfirm('ボーナス中は再生できません。\nボーナス終了後にお楽しみください!', null, true); return; }
+    audio.stopBGM(); // ゲーム側BGMと被らないように
+    srIdx = (i + SR_TRACKS.length) % SR_TRACKS.length;
+    srAudio.src = BGM_FILES[SR_TRACKS[srIdx].key];
+    srApplyVol();
+    srAudio.currentTime = 0;
+    srAudio.play().catch(() => {});
+    srRefreshList();
+  }
+  function srStop() {
+    srAudio.pause();
+    srAudio.removeAttribute('src');
+    try { srAudio.load(); } catch (e) {}
+    srIdx = -1;
+    $('srSeek').value = 0; $('srCur').textContent = '0:00'; $('srDur').textContent = '0:00';
+    srRefreshList();
+  }
+  /* 曲リスト生成 (グループ見出し付き) */
+  (function buildSrList() {
+    const wrap = $('srList');
+    let lastG = null;
+    SR_TRACKS.forEach((t, i) => {
+      if (t.g !== lastG) {
+        const h = document.createElement('div');
+        h.className = 'sr-group';
+        h.textContent = '― ' + t.g + ' ―';
+        wrap.appendChild(h);
+        lastG = t.g;
+      }
+      const b = document.createElement('button');
+      b.className = 'sr-track';
+      b.innerHTML = `<span class="sr-icon">▶</span><span>${t.name}</span>`;
+      b.addEventListener('click', () => {
+        if (i === srIdx) { /* 同じ曲は再生/一時停止トグル */
+          if (srAudio.paused) srAudio.play().catch(() => {}); else srAudio.pause();
+          srRefreshList();
+        } else srPlayTrack(i);
+      });
+      wrap.appendChild(b);
+    });
+  })();
+  $('srPlay').addEventListener('click', () => {
+    if (srIdx < 0) { srPlayTrack(0); return; }
+    if (srAudio.paused) srAudio.play().catch(() => {}); else srAudio.pause();
+    srRefreshList();
+  });
+  $('srPrev').addEventListener('click', () => { if (srIdx >= 0) srPlayTrack(srIdx - 1); });
+  $('srNext').addEventListener('click', () => { if (srIdx >= 0) srPlayTrack(srIdx + 1); });
+  $('srLoop').addEventListener('click', () => {
+    srLoop = !srLoop;
+    $('srLoop').classList.toggle('on', srLoop);
+  });
+  srAudio.addEventListener('ended', () => {
+    if (srIdx < 0) return;
+    if (srLoop) { srAudio.currentTime = 0; srAudio.play().catch(() => {}); }
+    else srPlayTrack(srIdx + 1); // 音楽プレイヤー風: 次の曲へ自動送り
+  });
+  srAudio.addEventListener('timeupdate', () => {
+    if (!isFinite(srAudio.duration) || srAudio.duration <= 0) return;
+    $('srSeek').value = Math.round(srAudio.currentTime / srAudio.duration * 1000);
+    $('srCur').textContent = srFmt(srAudio.currentTime);
+    $('srDur').textContent = srFmt(srAudio.duration);
+  });
+  srAudio.addEventListener('play', srRefreshList);
+  srAudio.addEventListener('pause', srRefreshList);
+  $('srSeek').addEventListener('input', () => {
+    if (srIdx < 0 || !isFinite(srAudio.duration)) return;
+    srAudio.currentTime = srAudio.duration * Number($('srSeek').value) / 1000;
+  });
+  $('srVol').addEventListener('input', () => { srVol = Number($('srVol').value) / 100; srApplyVol(); });
+  stopSoundRoom = srStop; // メニュー一括クローズ時にも曲を停止
+  $('btnCatSound').addEventListener('click', () => {
+    audio.ensure();
+    srRefreshList();
+    $('soundOverlay').hidden = false;
+  });
+  $('btnCloseSound').addEventListener('click', () => { srStop(); $('soundOverlay').hidden = true; });
+  $('soundOverlay').addEventListener('click', e => { if (e.target === $('soundOverlay')) { srStop(); $('soundOverlay').hidden = true; } });
 
   // キーボード操作 (PC)
   const keyMap = {

@@ -152,7 +152,7 @@
         <button class="menu-btn" id="btnCatChallenge">チャレンジモード</button>
         <button class="menu-btn" id="btnCatCpu" disabled>CPUとプレイ (PC推奨)<small>準備中</small></button>
         <button class="menu-btn" id="btnCatMission" disabled>ミッション<small>準備中</small></button>
-        <button class="menu-btn" id="btnCatSound" disabled>サウンドルーム<small>準備中</small></button>
+        <button class="menu-btn" id="btnCatSound">サウンドルーム</button>
         <button class="menu-btn" id="btnPayList">小役一覧</button>
         <button class="menu-btn" id="btnCatMachine">台設定</button>
         <button class="menu-btn" id="btnCatSystem">システム設定</button>
@@ -230,6 +230,27 @@
         </div>
       </div>
       <button class="sub-close" id="btnCloseSystem">閉じる</button>
+    </div>
+  </div>
+
+  <!-- ▼ サウンドルームポップアップ ▼ -->
+  <div id="soundOverlay" class="sub-overlay" hidden>
+    <div id="soundModal" class="sub-modal">
+      <h2>サウンドルーム</h2>
+      <div id="srPlayer">
+        <div id="srTitle">曲を選んでください</div>
+        <input type="range" id="srSeek" min="0" max="1000" value="0" disabled>
+        <div id="srTime"><span id="srCur">0:00</span><span id="srDur">0:00</span></div>
+        <div id="srCtrl">
+          <button class="sr-btn" id="srPrev">⏮</button>
+          <button class="sr-btn big" id="srPlay">▶</button>
+          <button class="sr-btn" id="srNext">⏭</button>
+          <button class="sr-btn" id="srLoop">🔁</button>
+        </div>
+        <div class="vol-row"><span>音量</span><input type="range" id="srVol" min="0" max="100" value="50"></div>
+      </div>
+      <div id="srList"></div>
+      <button class="sub-close" id="btnCloseSound">閉じる</button>
     </div>
   </div>
 
