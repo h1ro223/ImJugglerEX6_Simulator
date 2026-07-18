@@ -17,7 +17,7 @@
     <div class="dp-top">
       <span class="dp-unit">0001番台</span>
       <span class="dp-name">アイムジャグラーEX (6号機) v2.0</span>
-      <span class="dp-auto" id="dpAuto" hidden>AUTO PLAY中</span>
+      <button class="dp-auto" id="dpAuto">Auto Mode</button>
     </div>
     <div class="dp-body">
     <div class="dp-grid">
@@ -149,7 +149,7 @@
     <div id="modal">
       <h2>MENU</h2>
       <div id="menuBtns">
-        <button class="menu-btn" id="btnCatChallenge" disabled>チャレンジモード<small>準備中</small></button>
+        <button class="menu-btn" id="btnCatChallenge">チャレンジモード</button>
         <button class="menu-btn" id="btnCatCpu" disabled>CPUとプレイ (PC推奨)<small>準備中</small></button>
         <button class="menu-btn" id="btnCatMission" disabled>ミッション<small>準備中</small></button>
         <button class="menu-btn" id="btnCatSound" disabled>サウンドルーム<small>準備中</small></button>
@@ -185,10 +185,6 @@
           <button class="speed-btn" data-v="0.5">×0.5</button>
           <button class="speed-btn" data-v="1">×1.0</button>
         </div>
-        <label class="toggle-row">
-          <span>Auto Mode<small>(自動でプレイし続けます / [A]キー)</small></span>
-          <input type="checkbox" id="chkAuto">
-        </label>
         <button class="gold-btn" id="btnForcePeka">次ゲームでGOGO!確定 (1回)</button>
         <button class="menu-btn" id="btnCustomProb">カスタム設定モード</button>
       </div>
@@ -234,6 +230,31 @@
         </div>
       </div>
       <button class="sub-close" id="btnCloseSystem">閉じる</button>
+    </div>
+  </div>
+
+  <!-- ▼ 設定判別チャレンジポップアップ ▼ -->
+  <div id="challengeOverlay" class="sub-overlay" hidden>
+    <div id="challengeModal" class="sub-modal">
+      <h2>設定判別チャレンジ</h2>
+      <p class="custom-note">ランダムに選ばれた隠し設定(1〜6)を、実際に打って推理して当てるモードです。開始するとデータ(回転数・履歴)はリセットされ、答えるまで設定変更・カスタム設定・GOGO確定は使えません。</p>
+      <p class="custom-status" id="chStatus"></p>
+      <div id="chProgress" hidden>
+        <div id="chStats"></div>
+        <p class="ch-label">設定を答える:</p>
+        <div id="chAnswerBtns">
+          <button class="ch-ans-btn" data-a="1">1</button>
+          <button class="ch-ans-btn" data-a="2">2</button>
+          <button class="ch-ans-btn" data-a="3">3</button>
+          <button class="ch-ans-btn" data-a="4">4</button>
+          <button class="ch-ans-btn" data-a="5">5</button>
+          <button class="ch-ans-btn" data-a="6">6</button>
+        </div>
+        <button class="danger-btn ch-quit" id="btnChQuit">チャレンジを中止</button>
+      </div>
+      <button class="gold-btn" id="btnChStart">チャレンジ開始</button>
+      <p class="ch-record" id="chRecord"></p>
+      <button class="sub-close" id="btnCloseChallenge">閉じる</button>
     </div>
   </div>
 

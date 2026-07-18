@@ -61,8 +61,17 @@ const CUSTOM_KEYS = [
   { k: 'clown',  label: 'ピエロ',   def: () => 1 / P_CLOWN }
 ];
 
-/* このゲームで使う有効確率 (カスタム設定モード適用中はそちらを優先) */
+/* 有効な設定番号 (判別チャレンジ中は隠し設定) */
+function effSetting() {
+  return (state.challenge && state.challenge.active) ? state.challenge.answerSetting : state.setting;
+}
+
+/* このゲームで使う有効確率 (優先順位: 判別チャレンジ > カスタム設定 > 通常設定) */
 function getProbs() {
+  if (state.challenge && state.challenge.active) {
+    const sp = SETTINGS[state.challenge.answerSetting - 1];
+    return { bb: sp.bb, rb: sp.rb, grape: sp.grape, replay: P_REPLAY, cherry: P_CHERRY, bell: P_BELL, clown: P_CLOWN };
+  }
   if (state.customProb) {
     const c = state.customProb;
     const p = d => { const n = Number(d); return (isFinite(n) && n >= 1) ? 1 / n : 0; };
@@ -106,6 +115,8 @@ const MISSION_SAVE_KEY = 'imjuggler_ex_6_missions_v1'; // ミッション進捗(
 const state = {
   setting: 1,          // 設定1〜6
   customProb: null,    // カスタム設定モード {bb,rb,grape,replay,cherry,bell,clown} 分母値。nullで通常設定
+  challenge: null,     // 設定判別チャレンジ {active:true, answerSetting:1-6, prevSetting} nullで未挑戦
+  challengeStats: { played: 0, correct: 0 }, // 判別チャレンジ通算成績
   credit: 0,
   mochi: 0,            // 持ちメダル
   investYen: 0,        // 投資金額
@@ -350,7 +361,7 @@ const el = {
   btnPayback: $('btnPayback'), btnMenu: $('btnMenu'),
   modalOverlay: $('modalOverlay'), currentSetting: $('currentSetting'),
   chkBgm: $('chkBgm'), chkSe: $('chkSe'),
-  chkAuto: $('chkAuto'), btnForcePeka: $('btnForcePeka'),
+  btnForcePeka: $('btnForcePeka'),
   chkMsgBar: $('chkMsgBar'),
   volBgm: $('volBgm'), volSe: $('volSe'), bonusGraph: $('bonusGraph'),
   wKaishu: $('wKaishu')
@@ -818,7 +829,7 @@ function startGame() {
       const r = Math.random();
       if (r < sp.bb) {
         state.bonusFlag = 'BB'; newBonus = true;
-        if (r < rareCherryProb(state.setting)) rareHit = true;       // 中段チェリー(BB内数)
+        if (r < rareCherryProb(effSetting())) rareHit = true;        // 中段チェリー(BB内数)
         else if (Math.random() < CHERRY_DUP_RATE) dupCherry = true;  // チェリー重複BB
       } else if (r < sp.bb + sp.rb) {
         state.bonusFlag = 'RB'; newBonus = true;
@@ -1204,10 +1215,19 @@ function autoPress(i) {
 /* Auto ModeのON/OFF一元化 (設定チェックボックス・[A]キー共通) */
 function setAutoMode(on) {
   state.autoMode = on;
-  el.chkAuto.checked = on;
-  el.dpAuto.hidden = !on;
-  if (on) { closeModal(); autoNextGame(600); }
-  else autoClearTimers();
+  syncAutoBtn();
+  if (on) {
+    closeModal();
+    /* 回転中(まだ1つも停止していない)にONにした場合はこのゲームから自動停止 */
+    if (state.gamePhase === 'spinning' && state.cols.every(c => c === null)) autoSchedule(() => autoPress(0), 300);
+    else autoNextGame(600);
+  } else {
+    autoClearTimers();
+  }
+}
+function syncAutoBtn() {
+  el.dpAuto.classList.toggle('on', state.autoMode);
+  el.dpAuto.textContent = state.autoMode ? 'AUTO PLAY中' : 'Auto Mode';
 }
 
 function autoNextGame(delayMs) {
@@ -1277,7 +1297,7 @@ function updateUI() {
   el.dpRB.textContent = String(state.counts.rb);
   el.dpStart.textContent = String(state.counts.start);
   el.dpTotal.textContent = String(state.counts.total);
-  el.dpAuto.hidden = !state.autoMode;
+  syncAutoBtn();
   const bonusTotal = state.counts.bb + state.counts.rb;
   el.dpGosei.textContent = bonusTotal > 0 ? '1/' + (state.counts.total / bonusTotal).toFixed(1) : '1/---';
 
@@ -1363,7 +1383,7 @@ setInterval(() => {
 function saveGame() {
   try {
     const data = {
-      setting: state.setting, customProb: state.customProb, credit: state.credit, mochi: state.mochi,
+      setting: state.setting, customProb: state.customProb, challenge: state.challenge, challengeStats: state.challengeStats, credit: state.credit, mochi: state.mochi,
       investYen: state.investYen, totalIn: state.totalIn, totalOut: state.totalOut,
       counts: state.counts, bonusFlag: state.bonusFlag,
       lampLit: state.lampLit, inBonus: state.inBonus,
@@ -1387,6 +1407,10 @@ function loadGame() {
     const d = JSON.parse(raw);
     state.setting = d.setting || 1;
     state.customProb = (d.customProb && typeof d.customProb === 'object') ? d.customProb : null;
+    state.challenge = (d.challenge && d.challenge.active && d.challenge.answerSetting >= 1) ? d.challenge : null;
+    state.challengeStats = (d.challengeStats && typeof d.challengeStats === 'object')
+      ? { played: d.challengeStats.played || 0, correct: d.challengeStats.correct || 0 }
+      : { played: 0, correct: 0 };
     state.credit = d.credit || 0;
     state.mochi = d.mochi || 0;
     /* 旧セーブ移行: 旧仕様は持ちメダルにクレジットを含まないため合算 + 音量を新既定値へ */
@@ -1421,6 +1445,9 @@ function loadGame() {
 function resetData() {
   if (state.gamePhase !== 'idle') { message('リール停止後にリセットできます'); return; }
   state.counts = { bb: 0, rb: 0, total: 0, start: 0 };
+  state.history = [];
+  state.pendingHist = null;
+  renderGraph();
   message('データをリセットしました');
   saveGame();
   updateUI();
@@ -1435,6 +1462,7 @@ function resetAll() {
     history: [], pendingHist: null, betLock: false, bbHitPlaying: false, payoutLock: false,
     bbWinG: 0, bonusVer: 'NORMAL', bonusCountHold: false, bonusCountFinal: 0,
     rareLamp: false, kaishuYen: 0, forceBonus: false, customProb: null,
+    challenge: null, challengeStats: { played: 0, correct: 0 },
     counts: { bb: 0, rb: 0, total: 0, start: 0 }
   });
   audio.stopBGM();
@@ -1454,7 +1482,6 @@ function openModal() {
   refreshSpeedBtns();
 
   el.chkMsgBar.checked = state.msgBarOn;
-  el.chkAuto.checked = state.autoMode;
   el.chkBgm.checked = state.bgmOn;
   el.chkSe.checked = state.seOn;
   el.volBgm.value = Math.round(state.bgmVol * 100);
@@ -1464,7 +1491,12 @@ function openModal() {
 }
 function refreshPekaBtn() {
   const b = el.btnForcePeka;
-  if (state.inBonus) {
+  if (state.challenge && state.challenge.active) {
+    /* 判別チャレンジ中は確率をゆがめるため使用不可 */
+    b.disabled = true;
+    b.textContent = '判別チャレンジ中は使用不可';
+    b.classList.remove('armed');
+  } else if (state.inBonus) {
     /* BB/RB中は効かないため無効化(予約自体は保持され、ボーナス終了後の1G目で消費される) */
     b.disabled = true;
     b.textContent = state.bonusType === 'BB' ? '現在BB中!' : '現在RB中!';
@@ -1488,21 +1520,28 @@ function closeSubOverlays() {
   $('machineOverlay').hidden = true;
   $('systemOverlay').hidden = true;
   $('customOverlay').hidden = true;
+  $('challengeOverlay').hidden = true;
   $('confirmOverlay').hidden = true;
 }
 
 /* 確認ポップアップ (リセット系の誤操作防止) */
 let confirmCb = null;
-function askConfirm(msg, cb) {
+function askConfirm(msg, cb, infoOnly) {
   $('confirmMsg').textContent = msg;
-  confirmCb = cb;
+  confirmCb = cb || null;
+  $('btnConfirmNo').hidden = !!infoOnly;      // 情報表示モードは「いいえ」を隠す
+  $('btnConfirmYes').textContent = infoOnly ? 'OK' : 'はい';
   $('confirmOverlay').hidden = false;
 }
 function refreshSettingBtns() {
+  const inCh = !!(state.challenge && state.challenge.active);
   document.querySelectorAll('.setting-btn').forEach(btn => {
-    btn.classList.toggle('selected', !state.customProb && Number(btn.dataset.s) === state.setting);
+    btn.classList.toggle('selected', !inCh && !state.customProb && Number(btn.dataset.s) === state.setting);
+    btn.disabled = inCh; // 判別チャレンジ中は設定変更不可
   });
-  el.currentSetting.textContent = state.customProb ? '現在:カスタム' : `現在:設定${state.setting}`;
+  $('btnCustomProb').disabled = inCh;
+  el.currentSetting.textContent = inCh ? '現在:???(判別チャレンジ中)'
+    : state.customProb ? '現在:カスタム' : `現在:設定${state.setting}`;
 }
 function refreshSpeedBtns() {
   document.querySelectorAll('.speed-btn').forEach(btn => {
@@ -1553,9 +1592,7 @@ function bindEvents() {
     });
   });
   el.chkMsgBar.addEventListener('change', () => { state.msgBarOn = el.chkMsgBar.checked; applyMsgBar(); saveGame(); });
-  el.chkAuto.addEventListener('change', () => {
-    setAutoMode(el.chkAuto.checked);
-  });
+  el.dpAuto.addEventListener('click', () => { audio.ensure(); setAutoMode(!state.autoMode); });
   el.btnForcePeka.addEventListener('click', () => {
     state.forceBonus = !state.forceBonus;
     refreshPekaBtn();
@@ -1601,8 +1638,7 @@ function bindEvents() {
   /* --- カテゴリポップアップ (ルートメニューの上に重ねる) --- */
   $('btnCatMachine').addEventListener('click', () => {
     refreshSettingBtns(); refreshSpeedBtns(); refreshPekaBtn();
-    el.chkAuto.checked = state.autoMode;
-    $('machineOverlay').hidden = false;
+      $('machineOverlay').hidden = false;
   });
   $('btnCloseMachine').addEventListener('click', () => { $('machineOverlay').hidden = true; });
   $('machineOverlay').addEventListener('click', e => { if (e.target === $('machineOverlay')) $('machineOverlay').hidden = true; });
@@ -1669,6 +1705,77 @@ function bindEvents() {
   });
   $('btnCloseCustom').addEventListener('click', () => { $('customOverlay').hidden = true; });
   $('customOverlay').addEventListener('click', e => { if (e.target === $('customOverlay')) $('customOverlay').hidden = true; });
+
+  /* --- 設定判別チャレンジ --- */
+  function refreshChallenge() {
+    const ch = state.challenge;
+    const active = !!(ch && ch.active);
+    $('chProgress').hidden = !active;
+    $('btnChStart').hidden = active;
+    $('chStatus').textContent = active ? '● チャレンジ中! 打って設定を推理しよう' : '○ 未挑戦';
+    if (active) {
+      const c = state.counts;
+      const gosei = (c.bb + c.rb) > 0 ? '1/' + (c.total / (c.bb + c.rb)).toFixed(1) : '1/---';
+      $('chStats').textContent = `経過: ${c.total}G / BB: ${c.bb} / RB: ${c.rb} / 合成: ${gosei}`;
+    }
+    const s = state.challengeStats;
+    const rate = s.played > 0 ? Math.round(s.correct / s.played * 100) : 0;
+    $('chRecord').textContent = `通算成績: ${s.played}回挑戦 / ${s.correct}回正解 (正解率${rate}%)`;
+  }
+  function endChallenge() {
+    if (state.challenge) state.setting = state.challenge.prevSetting || state.setting;
+    state.challenge = null;
+    refreshSettingBtns();
+    refreshPekaBtn();
+    refreshChallenge();
+    saveGame();
+  }
+  $('btnCatChallenge').addEventListener('click', () => {
+    refreshChallenge();
+    $('challengeOverlay').hidden = false;
+  });
+  $('btnChStart').addEventListener('click', () => {
+    if (state.gamePhase !== 'idle') { askConfirm('リール停止後に開始できます。', null, true); return; }
+    askConfirm('チャレンジを開始しますか?\nデータ(回転数・BB/RB回数・履歴)はリセットされます。', () => {
+      resetData();
+      state.challenge = {
+        active: true,
+        answerSetting: 1 + Math.floor(Math.random() * 6),
+        prevSetting: state.setting
+      };
+      state.customProb = null; // カスタム設定は解除(チャレンジ確率を優先)
+      refreshSettingBtns();
+      refreshPekaBtn();
+      refreshChallenge();
+      saveGame();
+      message('設定判別チャレンジ開始! 設定は1〜6のどれかな?');
+    });
+  });
+  document.querySelectorAll('.ch-ans-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!state.challenge || !state.challenge.active) return;
+      const guess = Number(btn.dataset.a);
+      askConfirm(`「設定${guess}」で回答します。\nよろしいですか?`, () => {
+        const ans = state.challenge.answerSetting;
+        const hit = guess === ans;
+        state.challengeStats.played++;
+        if (hit) state.challengeStats.correct++;
+        endChallenge();
+        askConfirm(
+          hit ? `🎉 正解! この台は設定${ans}でした!`
+              : `残念... 正解は設定${ans}でした。\n(あなたの回答: 設定${guess})`,
+          null, true);
+      });
+    });
+  });
+  $('btnChQuit').addEventListener('click', () => {
+    askConfirm('チャレンジを中止します(成績には記録されません)。\nよろしいですか?', () => {
+      endChallenge();
+      message('チャレンジを中止しました');
+    });
+  });
+  $('btnCloseChallenge').addEventListener('click', () => { $('challengeOverlay').hidden = true; });
+  $('challengeOverlay').addEventListener('click', e => { if (e.target === $('challengeOverlay')) $('challengeOverlay').hidden = true; });
 
   // キーボード操作 (PC)
   const keyMap = {
