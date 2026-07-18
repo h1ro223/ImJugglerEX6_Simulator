@@ -50,6 +50,28 @@ const P_CLOWN  = 1/1092.3;
 const rareCherryProb = s => (s <= 3 ? 1/2184.53 : 1/1820.44);
 const CHERRY_DUP_RATE = 0.25; // ボーナス当選時のチェリー重複割合(概算)
 
+/* カスタム設定の入力項目定義 (UI生成・既定値表示用) */
+const CUSTOM_KEYS = [
+  { k: 'bb',     label: 'BB',       def: s => 1 / SETTINGS[s - 1].bb },
+  { k: 'rb',     label: 'RB',       def: s => 1 / SETTINGS[s - 1].rb },
+  { k: 'grape',  label: 'ブドウ',   def: s => 1 / SETTINGS[s - 1].grape },
+  { k: 'replay', label: 'リプレイ', def: () => 1 / P_REPLAY },
+  { k: 'cherry', label: 'チェリー', def: () => 1 / P_CHERRY },
+  { k: 'bell',   label: 'ベル',     def: () => 1 / P_BELL },
+  { k: 'clown',  label: 'ピエロ',   def: () => 1 / P_CLOWN }
+];
+
+/* このゲームで使う有効確率 (カスタム設定モード適用中はそちらを優先) */
+function getProbs() {
+  if (state.customProb) {
+    const c = state.customProb;
+    const p = d => { const n = Number(d); return (isFinite(n) && n >= 1) ? 1 / n : 0; };
+    return { bb: p(c.bb), rb: p(c.rb), grape: p(c.grape), replay: p(c.replay), cherry: p(c.cherry), bell: p(c.bell), clown: p(c.clown) };
+  }
+  const sp = SETTINGS[state.setting - 1];
+  return { bb: sp.bb, rb: sp.rb, grape: sp.grape, replay: P_REPLAY, cherry: P_CHERRY, bell: P_BELL, clown: P_CLOWN };
+}
+
 /* 停止目標図柄 (null=不問) BB=7/7/7, RB=7/7/BAR (本家準拠) */
 const TARGETS = {
   GRAPE:  [1, 1, 1],
@@ -83,6 +105,7 @@ const MISSION_SAVE_KEY = 'imjuggler_ex_6_missions_v1'; // ミッション進捗(
 /* ================= 状態 ================= */
 const state = {
   setting: 1,          // 設定1〜6
+  customProb: null,    // カスタム設定モード {bb,rb,grape,replay,cherry,bell,clown} 分母値。nullで通常設定
   credit: 0,
   mochi: 0,            // 持ちメダル
   investYen: 0,        // 投資金額
@@ -775,7 +798,7 @@ function startGame() {
   if (state.inBonus) {
     state.smallFlag = 'GRAPE'; // ボーナス中は毎ゲームブドウ
   } else {
-    const sp = SETTINGS[state.setting - 1];
+    const sp = getProbs(); // カスタム設定モード適用中はカスタム確率
     let newBonus = false, rareHit = false, dupCherry = false;
     const hadFlag = !!state.bonusFlag; // 楽曲判定用: このゲームで新規当選したか
     /* 設定メニュー「ペカ確定」: 確率無視でボーナスフラグ確定 + 第3停止離しで告知 */
@@ -813,10 +836,10 @@ function startGame() {
       let acc = 0;
       state.smallFlag = null;
       if (r2 < (acc += sp.grape)) state.smallFlag = 'GRAPE';
-      else if (r2 < (acc += P_REPLAY)) state.smallFlag = 'REPLAY';
-      else if (r2 < (acc += P_CHERRY)) state.smallFlag = 'CHERRY';
-      else if (r2 < (acc += P_BELL)) state.smallFlag = 'BELL';
-      else if (r2 < (acc += P_CLOWN)) state.smallFlag = 'CLOWN';
+      else if (r2 < (acc += sp.replay)) state.smallFlag = 'REPLAY';
+      else if (r2 < (acc += sp.cherry)) state.smallFlag = 'CHERRY';
+      else if (r2 < (acc += sp.bell)) state.smallFlag = 'BELL';
+      else if (r2 < (acc += sp.clown)) state.smallFlag = 'CLOWN';
     }
 
     /* BB新規当選時の当選G数を記録 (揃えるまで数ゲーム持ち越しても当選G基準で楽曲を判定) */
@@ -1340,7 +1363,7 @@ setInterval(() => {
 function saveGame() {
   try {
     const data = {
-      setting: state.setting, credit: state.credit, mochi: state.mochi,
+      setting: state.setting, customProb: state.customProb, credit: state.credit, mochi: state.mochi,
       investYen: state.investYen, totalIn: state.totalIn, totalOut: state.totalOut,
       counts: state.counts, bonusFlag: state.bonusFlag,
       lampLit: state.lampLit, inBonus: state.inBonus,
@@ -1363,6 +1386,7 @@ function loadGame() {
     if (!raw) return;
     const d = JSON.parse(raw);
     state.setting = d.setting || 1;
+    state.customProb = (d.customProb && typeof d.customProb === 'object') ? d.customProb : null;
     state.credit = d.credit || 0;
     state.mochi = d.mochi || 0;
     /* 旧セーブ移行: 旧仕様は持ちメダルにクレジットを含まないため合算 + 音量を新既定値へ */
@@ -1410,7 +1434,7 @@ function resetAll() {
     inBonus: false, bonusType: null, bonusPaid: 0,
     history: [], pendingHist: null, betLock: false, bbHitPlaying: false, payoutLock: false,
     bbWinG: 0, bonusVer: 'NORMAL', bonusCountHold: false, bonusCountFinal: 0,
-    rareLamp: false, kaishuYen: 0, forceBonus: false,
+    rareLamp: false, kaishuYen: 0, forceBonus: false, customProb: null,
     counts: { bb: 0, rb: 0, total: 0, start: 0 }
   });
   audio.stopBGM();
@@ -1463,6 +1487,7 @@ function closeModal() {
 function closeSubOverlays() {
   $('machineOverlay').hidden = true;
   $('systemOverlay').hidden = true;
+  $('customOverlay').hidden = true;
   $('confirmOverlay').hidden = true;
 }
 
@@ -1475,9 +1500,9 @@ function askConfirm(msg, cb) {
 }
 function refreshSettingBtns() {
   document.querySelectorAll('.setting-btn').forEach(btn => {
-    btn.classList.toggle('selected', Number(btn.dataset.s) === state.setting);
+    btn.classList.toggle('selected', !state.customProb && Number(btn.dataset.s) === state.setting);
   });
-  el.currentSetting.textContent = `現在:設定${state.setting}`;
+  el.currentSetting.textContent = state.customProb ? '現在:カスタム' : `現在:設定${state.setting}`;
 }
 function refreshSpeedBtns() {
   document.querySelectorAll('.speed-btn').forEach(btn => {
@@ -1514,6 +1539,7 @@ function bindEvents() {
   document.querySelectorAll('.setting-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       state.setting = Number(btn.dataset.s);
+      state.customProb = null; // 設定を選んだらカスタム設定モードは解除
       refreshSettingBtns();
       saveGame();
     });
@@ -1553,8 +1579,8 @@ function bindEvents() {
     askConfirm('データ(BB/RB回数・回転数・履歴グラフ)をリセットします。\n本当によろしいですか?', () => { resetData(); });
   });
   $('btnResetAll').addEventListener('click', () => {
-    askConfirm('全データ(メダル・投資・設定・ミッション進捗を含む)を初期化します。\n本当によろしいですか?', () => {
-      try { localStorage.removeItem(MISSION_SAVE_KEY); } catch (e) {}
+    /* ミッション進捗は含めない(進捗リセットはシステム設定の専用ボタンのみ) */
+    askConfirm('全データ(メダル・投資・設定など)を初期化します。\n本当によろしいですか?', () => {
       resetAll(); closeModal();
     });
   });
@@ -1590,6 +1616,59 @@ function bindEvents() {
   });
   $('btnCloseSystem').addEventListener('click', () => { $('systemOverlay').hidden = true; });
   $('systemOverlay').addEventListener('click', e => { if (e.target === $('systemOverlay')) $('systemOverlay').hidden = true; });
+
+  /* --- カスタム設定モード --- */
+  function buildCustomRows() {
+    const wrap = $('customRows');
+    wrap.innerHTML = '';
+    CUSTOM_KEYS.forEach(({ k, label, def }) => {
+      const row = document.createElement('div');
+      row.className = 'custom-row';
+      const cur = state.customProb && isFinite(Number(state.customProb[k]))
+        ? Number(state.customProb[k])
+        : def(state.setting);
+      row.innerHTML = `<label>${label}</label><span class="frac">1 /</span>` +
+        `<input type="number" min="1" step="0.01" id="customIn_${k}" value="${(Math.round(cur * 100) / 100)}">`;
+      wrap.appendChild(row);
+    });
+    /* 状態表示 */
+    let stEl = $('customStatus');
+    if (!stEl) {
+      stEl = document.createElement('p');
+      stEl.id = 'customStatus';
+      stEl.className = 'custom-status';
+      wrap.parentNode.insertBefore(stEl, wrap);
+    }
+    stEl.textContent = state.customProb ? '● カスタム適用中' : `○ 未適用 (通常:設定${state.setting})`;
+  }
+  $('btnCustomProb').addEventListener('click', () => {
+    buildCustomRows();
+    $('customOverlay').hidden = false;
+  });
+  $('btnCustomApply').addEventListener('click', () => {
+    const c = {};
+    let ok = true;
+    CUSTOM_KEYS.forEach(({ k }) => {
+      const v = Number($('customIn_' + k).value);
+      if (!isFinite(v) || v < 1) ok = false;
+      c[k] = v;
+    });
+    if (!ok) { askConfirm('1以上の数値を入力してください。', null); return; }
+    state.customProb = c;
+    refreshSettingBtns();
+    buildCustomRows();
+    saveGame();
+    message('カスタム設定を適用しました');
+  });
+  $('btnCustomOff').addEventListener('click', () => {
+    state.customProb = null;
+    refreshSettingBtns();
+    buildCustomRows();
+    saveGame();
+    message(`カスタム設定を解除しました (設定${state.setting})`);
+  });
+  $('btnCloseCustom').addEventListener('click', () => { $('customOverlay').hidden = true; });
+  $('customOverlay').addEventListener('click', e => { if (e.target === $('customOverlay')) $('customOverlay').hidden = true; });
 
   // キーボード操作 (PC)
   const keyMap = {

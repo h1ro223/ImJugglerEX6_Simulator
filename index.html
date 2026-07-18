@@ -190,7 +190,7 @@
           <input type="checkbox" id="chkAuto">
         </label>
         <button class="gold-btn" id="btnForcePeka">次ゲームでGOGO!確定 (1回)</button>
-        <button class="menu-btn" id="btnCustomProb" disabled>カスタム設定モード<small>準備中</small></button>
+        <button class="menu-btn" id="btnCustomProb">カスタム設定モード</button>
       </div>
       <div class="modal-section">
         <h3>リセット</h3>
@@ -228,12 +228,26 @@
         <div class="vol-row"><span>SE音量</span><input type="range" id="volSe" min="0" max="100" value="35"></div>
       </div>
       <div class="modal-section">
-        <h3>ミッション</h3>
+        <h3>リセット</h3>
         <div class="reset-btns">
-          <button class="danger-btn" id="btnResetMission">進捗リセット</button>
+          <button class="danger-btn" id="btnResetMission">ミッション・進捗リセット</button>
         </div>
       </div>
       <button class="sub-close" id="btnCloseSystem">閉じる</button>
+    </div>
+  </div>
+
+  <!-- ▼ カスタム設定モードポップアップ ▼ -->
+  <div id="customOverlay" class="sub-overlay" hidden>
+    <div id="customModal" class="sub-modal">
+      <h2>カスタム設定モード</h2>
+      <p class="custom-note">各役の確率を「1/○○」の分母で指定できます(1以上)。<br>適用中は設定1〜6の代わりにこの確率で抽選します。</p>
+      <div id="customRows"></div>
+      <div class="custom-btns">
+        <button class="gold-btn" id="btnCustomApply">適用する</button>
+        <button class="sub-close" id="btnCustomOff">解除(通常設定に戻す)</button>
+      </div>
+      <button class="sub-close" id="btnCloseCustom">閉じる</button>
     </div>
   </div>
 
