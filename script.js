@@ -64,8 +64,8 @@ const TARGETS = {
 
 const MAX_SLIP   = 4;      // 最大4コマ引き込み
 /* ▼ リール見た目の調整ポイント (本家採寸ベース。数値を変えるだけで調整可) */
-const CELL_GAP_RATIO = 0.15; // 小役と小役の間の隙間 (コマ高さに対する割合)
-const PEEK_RATIO     = 0.20; // 上下の隣コマを覗かせる量 (コマ高さに対する割合)
+const CELL_GAP_RATIO = 0.12; // 小役と小役の間の隙間 (コマ高さに対する割合)
+const PEEK_RATIO     = 0.25; // 上下の隣コマを覗かせる量 (コマ高さに対する割合)
 const REV_MS     = 780;    // 1回転にかかる時間(ms) 約77rpm
 const SPEED      = KOMA / REV_MS;  // コマ/ms
 const curSpeed   = () => SPEED * state.reelSpeed; // リール回転速度倍率を適用
