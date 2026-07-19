@@ -101,7 +101,7 @@ const REV_MS     = 780;    // 1回転にかかる時間(ms) 約77rpm
 const SPEED      = KOMA / REV_MS;  // コマ/ms
 const curSpeed   = () => SPEED * state.reelSpeed; // リール回転速度倍率を適用
 const DECEL_KOMA = 1.05;   // (旧減速演出用・現在は未使用。ガチッと即停止に変更済み)
-const WAIT_MS    = 4100;   // ゲーム間ウェイト(4.1秒規定)
+const WAIT_MS    = 0;   // ゲーム間ウェイト(4.1秒規定 4100)
 const PEKA_FIRST = 0.15;   // 先ペカ(レバーON時点灯)の割合。残り85%は後ペカ(第3停止離し)
 const BB_LIMIT   = 280;    // BB: 280枚を超える払い出しで終了
 const RB_LIMIT   = 98;     // RB: 98枚を超える払い出しで終了
