@@ -109,7 +109,134 @@ const PAY_CAP    = 15;     // 1ゲームの払い出し上限
 const COUNT_MS   = 100;    // メダル数字カウント & Get1.mp3ループ間隔 (調整用)
 const CREDIT_MAX = 50;
 const SAVE_KEY   = 'imjuggler_ex_6_save_v1';
-const MISSION_SAVE_KEY = 'imjuggler_ex_6_missions_v1'; // ミッション進捗(生涯記録・全リセット/進捗リセットでのみ消去)
+const MISSION_SAVE_KEY = 'imjuggler_ex_6_missions_v1'; // ミッション進捗(生涯記録・進捗リセットでのみ消去)
+/* ================= ミッション (実績システム) ================= */
+/* 進捗は生涯記録としてMISSION_SAVE_KEYに保存。
+   データリセット/全リセットでは消えず、システム設定の「ミッション・進捗リセット」でのみ初期化 */
+const MISSIONS = [
+  /* --- 累計系 --- */
+  { id: 'm01', cat: '累計', name: 'メダルを累計100枚獲得する',    t: 100,   v: s => s.lifeOut },
+  { id: 'm02', cat: '累計', name: 'メダルを累計1,000枚獲得する',  t: 1000,  v: s => s.lifeOut },
+  { id: 'm03', cat: '累計', name: 'メダルを累計5,000枚獲得する',  t: 5000,  v: s => s.lifeOut },
+  { id: 'm04', cat: '累計', name: 'メダルを累計10,000枚獲得する', t: 10000, v: s => s.lifeOut },
+  { id: 'm05', cat: '累計', name: '累計1,000ゲーム回す',          t: 1000,  v: s => s.spins },
+  { id: 'm06', cat: '累計', name: '累計5,000ゲーム回す',          t: 5000,  v: s => s.spins },
+  { id: 'm07', cat: '累計', name: '累計10,000ゲーム回す',         t: 10000, v: s => s.spins },
+  { id: 'm08', cat: '累計', name: 'BBに初めて当選する',           t: 1,     v: s => s.bb },
+  { id: 'm09', cat: '累計', name: 'BBに累計10回当選する',         t: 10,    v: s => s.bb },
+  { id: 'm10', cat: '累計', name: 'BBに累計50回当選する',         t: 50,    v: s => s.bb },
+  { id: 'm11', cat: '累計', name: 'BBに累計100回当選する',        t: 100,   v: s => s.bb },
+  { id: 'm12', cat: '累計', name: 'RBに初めて当選する',           t: 1,     v: s => s.rb },
+  { id: 'm13', cat: '累計', name: 'RBに累計10回当選する',         t: 10,    v: s => s.rb },
+  { id: 'm14', cat: '累計', name: 'RBに累計50回当選する',         t: 50,    v: s => s.rb },
+  { id: 'm15', cat: '累計', name: 'RBに累計100回当選する',        t: 100,   v: s => s.rb },
+  { id: 'm16', cat: '累計', name: 'ボーナス合算 累計20回達成',    t: 20,    v: s => s.bb + s.rb },
+  { id: 'm17', cat: '累計', name: 'ボーナス合算 累計100回達成',   t: 100,   v: s => s.bb + s.rb },
+  { id: 'm18', cat: '累計', name: '生涯差枚 +1,000枚を超える',    t: 1000,  v: s => Math.max(0, s.lifeOut - s.lifeIn) },
+  { id: 'm19', cat: '累計', name: '投資 累計10,000円を超える',    t: 10000, v: s => s.investYen },
+  { id: 'm20', cat: '累計', name: '回収 累計10,000円を超える',    t: 10000, v: s => s.kaishuYen },
+  /* --- 連チャン系 (ジャグ連=前回ボーナスから100G以内の当選) --- */
+  { id: 'm21', cat: '連チャン', name: 'ジャグ連を初めて達成する', t: 1,  v: s => s.jugren },
+  { id: 'm22', cat: '連チャン', name: 'ジャグ連を累計5回達成する',  t: 5,  v: s => s.jugren },
+  { id: 'm23', cat: '連チャン', name: 'ジャグ連を累計20回達成する', t: 20, v: s => s.jugren },
+  { id: 'm24', cat: '連チャン', name: 'ジャグ連を累計50回達成する', t: 50, v: s => s.jugren },
+  { id: 'm25', cat: '連チャン', name: '3連チャンを達成する',      t: 3, v: s => s.renMax },
+  { id: 'm26', cat: '連チャン', name: '5連チャンを達成する',      t: 5, v: s => s.renMax },
+  { id: 'm27', cat: '連チャン', name: '7連チャンを達成する',      t: 7, v: s => s.renMax },
+  { id: 'm28', cat: '連チャン', name: '50G以内のジャグ連を達成する', t: 1, v: s => s.ren50 },
+  { id: 'm29', cat: '連チャン', name: '10G以内のジャグ連を達成する(激熱)', t: 1, v: s => s.ren10 },
+  { id: 'm30', cat: '連チャン', name: 'BB→BBの連チャンを達成する', t: 1, v: s => s.bbbb },
+  { id: 'm31', cat: '連チャン', name: 'RB→RBの連チャンを達成する', t: 1, v: s => s.rbrb },
+  { id: 'm32', cat: '連チャン', name: 'データリセットなしでボーナス合計5回引く',  t: 1, v: s => s.ses5 },
+  { id: 'm33', cat: '連チャン', name: 'データリセットなしでボーナス合計10回引く', t: 1, v: s => s.ses10 },
+  { id: 'm34', cat: '連チャン', name: 'ボーナス後1G目で当選する(単独引き)', t: 1, v: s => s.solo },
+  /* --- レア役・バージョン系 --- */
+  { id: 'm35', cat: 'レア役', name: '中段チェリー(レインボー)に初当選する', t: 1, v: s => s.rare },
+  { id: 'm36', cat: 'レア役', name: '中段チェリーに累計5回当選する', t: 5, v: s => s.rare },
+  { id: 'm37', cat: 'レア役', name: 'シークレットver(1G)のBBに当選する', t: 1, v: s => s.verSP },
+  { id: 'm38', cat: 'レア役', name: '第九ver(2〜5G)のBBに当選する', t: 1, v: s => s.verD9 },
+  { id: 'm39', cat: 'レア役', name: '777ver(ちょうど77G)のBBに当選する', t: 1, v: s => s.verX },
+  { id: 'm40', cat: 'レア役', name: '運命ver(ゾロ目G)のBBに当選する', t: 1, v: s => s.verUNMEI },
+  { id: 'm41', cat: 'レア役', name: '全5バージョンのBB楽曲を実戦で聴く', t: 5,
+    v: s => (s.verNORMAL ? 1 : 0) + (s.verSP ? 1 : 0) + (s.verD9 ? 1 : 0) + (s.verX ? 1 : 0) + (s.verUNMEI ? 1 : 0) },
+  { id: 'm42', cat: 'レア役', name: '先ペカ(レバーON点灯)を経験する', t: 1, v: s => s.firstPeka },
+  { id: 'm43', cat: 'レア役', name: '後ペカ(第3停止点灯)を経験する', t: 1, v: s => s.latePeka },
+  { id: 'm44', cat: 'レア役', name: 'チェリー重複ボーナスを経験する', t: 1, v: s => s.dup },
+  { id: 'm45', cat: 'レア役', name: 'ブドウを累計100回引く',   t: 100, v: s => s.grape },
+  { id: 'm46', cat: 'レア役', name: 'ベルを累計50回引く',      t: 50,  v: s => s.bell },
+  { id: 'm47', cat: 'レア役', name: 'ピエロを累計50回引く',    t: 50,  v: s => s.clown },
+  { id: 'm48', cat: 'レア役', name: 'リプレイを累計100回引く', t: 100, v: s => s.replay },
+  { id: 'm49', cat: 'レア役', name: 'チェリー重複BBを経験する', t: 1, v: s => s.dupBB },
+  { id: 'm50', cat: 'レア役', name: '設定6でBBに当選する',     t: 1, v: s => s.set6bb }
+];
+
+function freshMissionStore() {
+  return {
+    st: {
+      lifeIn: 0, lifeOut: 0, spins: 0, bb: 0, rb: 0, investYen: 0, kaishuYen: 0,
+      jugren: 0, renMax: 0, ren50: 0, ren10: 0, bbbb: 0, rbrb: 0, ses5: 0, ses10: 0, solo: 0,
+      rare: 0, verNORMAL: 0, verSP: 0, verD9: 0, verX: 0, verUNMEI: 0,
+      firstPeka: 0, latePeka: 0, dup: 0, dupBB: 0, grape: 0, bell: 0, clown: 0, replay: 0, set6bb: 0
+    },
+    done: {}
+  };
+}
+function loadMissions() {
+  const fresh = freshMissionStore();
+  try {
+    const d = JSON.parse(localStorage.getItem(MISSION_SAVE_KEY));
+    if (d && d.st) Object.keys(fresh.st).forEach(k => { if (isFinite(Number(d.st[k]))) fresh.st[k] = Number(d.st[k]); });
+    if (d && d.done && typeof d.done === 'object') fresh.done = d.done;
+  } catch (e) {}
+  return fresh;
+}
+let mstore = loadMissions();
+function saveMissions() {
+  try { localStorage.setItem(MISSION_SAVE_KEY, JSON.stringify(mstore)); } catch (e) {}
+}
+/* 進捗を加算/更新して達成判定 */
+function mAdd(key, n = 1) {
+  mstore.st[key] = (mstore.st[key] || 0) + n;
+  checkMissions();
+}
+function mSet(key) {
+  if (!mstore.st[key]) { mstore.st[key] = 1; checkMissions(); }
+}
+function mMax(key, val) {
+  if ((mstore.st[key] || 0) < val) { mstore.st[key] = val; checkMissions(); }
+}
+function checkMissions() {
+  const newly = [];
+  MISSIONS.forEach(m => {
+    if (!mstore.done[m.id] && m.v(mstore.st) >= m.t) {
+      mstore.done[m.id] = Date.now();
+      newly.push(m);
+    }
+  });
+  saveMissions();
+  newly.forEach(m => queueMissionToast(m.name));
+}
+
+/* --- ミッションクリア通知 (画面外からフェードイン→自動フェードアウト) --- */
+const mtQueue = [];
+let mtBusy = false;
+function queueMissionToast(name) {
+  mtQueue.push(name);
+  pumpMissionToast();
+}
+function pumpMissionToast() {
+  if (mtBusy || !mtQueue.length) return;
+  mtBusy = true;
+  const t = $('missionToast');
+  $('mtName').textContent = mtQueue.shift();
+  t.hidden = false;
+  requestAnimationFrame(() => requestAnimationFrame(() => t.classList.add('show')));
+  setTimeout(() => {
+    t.classList.remove('show');
+    setTimeout(() => { t.hidden = true; mtBusy = false; pumpMissionToast(); }, 500);
+  }, 3500);
+}
+
 
 /* ================= 状態 ================= */
 const state = {
@@ -117,6 +244,9 @@ const state = {
   customProb: null,    // カスタム設定モード {bb,rb,grape,replay,cherry,bell,clown} 分母値。nullで通常設定
   challenge: null,     // 設定判別チャレンジ {active:true, answerSetting:1-6, prevSetting} nullで未挑戦
   challengeStats: { played: 0, correct: 0 }, // 判別チャレンジ通算成績
+  hadBonus: false,     // 前回ボーナスがあるか(ジャグ連判定用・データリセットで解除)
+  prevBonusType: null, // 前回のボーナス種別
+  renChain: 0,         // 現在の連チャン数
   credit: 0,
   mochi: 0,            // 持ちメダル
   investYen: 0,        // 投資金額
@@ -720,6 +850,7 @@ function addBet(n) {
   if (!tryConsumeCoins(need)) { message('メダルが足りません! 貸出ボタンを押してください'); return; }
   state.bet = newBet;
   state.totalIn += need;
+  mAdd('lifeIn', need);
   audio.playSE('BET', true); // 重ね再生可
   animateMedals(COUNT_MS); // 1枚ずつ減らして表示
   updateUI();
@@ -733,6 +864,7 @@ function setMaxBet() {
   if (!tryConsumeCoins(need)) { message('メダルが足りません! 貸出ボタンを押してください'); return; }
   state.bet = max;
   state.totalIn += need;
+  mAdd('lifeIn', need);
   audio.playSE('MAXBET3'); // 通常時3枚BET
   animateMedals(COUNT_MS); // 1枚ずつ減らして表示
   updateUI();
@@ -753,6 +885,7 @@ function leverOn(betDelayMs = 1000) {
       if (!tryConsumeCoins(2)) { message('メダルが足りません! 貸出ボタンを押してください'); return; }
       state.bet = 2;
       state.totalIn += 2;
+      mAdd('lifeIn', 2);
       audio.playSE('MAXBET2'); // ボーナス中は2枚BET固定
       animateMedals(COUNT_MS);
       autoBetDelay = betDelayMs;
@@ -762,6 +895,7 @@ function leverOn(betDelayMs = 1000) {
     if (!tryConsumeCoins(3)) { message('メダルが足りません! 貸出ボタンを押してください'); return; }
     state.bet = 3;
     state.totalIn += 3;
+    mAdd('lifeIn', 3);
     audio.playSE('MAXBET3');
     animateMedals(COUNT_MS);
     autoBetDelay = betDelayMs;
@@ -821,7 +955,7 @@ function startGame() {
       }
       /* 自然当選と同じ点灯抽選 (先ペカ15% / 後ペカ85%) */
       if (!state.lampLit) {
-        if (Math.random() < PEKA_FIRST) lightLamp();
+        if (Math.random() < PEKA_FIRST) { lightLamp(); mSet('firstPeka'); }
         else state.lampPending = true;
       }
     }
@@ -846,28 +980,52 @@ function startGame() {
       const r2 = Math.random();
       let acc = 0;
       state.smallFlag = null;
-      if (r2 < (acc += sp.grape)) state.smallFlag = 'GRAPE';
-      else if (r2 < (acc += sp.replay)) state.smallFlag = 'REPLAY';
+      if (r2 < (acc += sp.grape)) { state.smallFlag = 'GRAPE'; mAdd('grape'); }
+      else if (r2 < (acc += sp.replay)) { state.smallFlag = 'REPLAY'; mAdd('replay'); }
       else if (r2 < (acc += sp.cherry)) state.smallFlag = 'CHERRY';
-      else if (r2 < (acc += sp.bell)) state.smallFlag = 'BELL';
-      else if (r2 < (acc += sp.clown)) state.smallFlag = 'CLOWN';
+      else if (r2 < (acc += sp.bell)) { state.smallFlag = 'BELL'; mAdd('bell'); }
+      else if (r2 < (acc += sp.clown)) { state.smallFlag = 'CLOWN'; mAdd('clown'); }
     }
 
-    /* BB新規当選時の当選G数を記録 (揃えるまで数ゲーム持ち越しても当選G基準で楽曲を判定) */
-    if (!hadFlag && state.bonusFlag === 'BB') {
-      state.bbWinG = state.counts.start + 1; // このゲームのG数
+    /* 新規当選時の処理 (揃えるまで数ゲーム持ち越しても当選G基準) */
+    if (!hadFlag && state.bonusFlag) {
+      const winG = state.counts.start + 1; // このゲームのG数
+      if (state.bonusFlag === 'BB') state.bbWinG = winG; // 楽曲バージョン判定用
+
+      /* --- ミッション: ジャグ連・連チャン系 (当選ゲーム時点で判定) --- */
+      const isRen = state.hadBonus && winG <= 100; // ジャグ連=前回ボーナスから100G以内の当選
+      if (isRen) {
+        mAdd('jugren');
+        state.renChain = (state.renChain || 1) + 1;
+        if (winG <= 50) mSet('ren50');
+        if (winG <= 10) mSet('ren10');
+        if (state.prevBonusType === 'BB' && state.bonusFlag === 'BB') mSet('bbbb');
+        if (state.prevBonusType === 'RB' && state.bonusFlag === 'RB') mSet('rbrb');
+      } else {
+        state.renChain = 1;
+      }
+      mMax('renMax', state.renChain);
+      if (state.hadBonus && winG === 1) mSet('solo');
+      const eff6 = (state.challenge && state.challenge.active)
+        ? state.challenge.answerSetting === 6
+        : (!state.customProb && state.setting === 6);
+      if (state.bonusFlag === 'BB' && eff6) mSet('set6bb');
+      if (dupCherry) { mSet('dup'); if (state.bonusFlag === 'BB') mSet('dupBB'); }
+      if (rareHit) mAdd('rare');
     }
 
     /* GOGO!CHANCE 点灯タイミング抽選 (先ペカ15% / 後ペカ85%) */
     if (newBonus && !state.lampLit) {
       if (Math.random() < PEKA_FIRST) {
         lightLamp(); // 先ペカ(レバーON時) → このゲームから揃えられる
+        mSet('firstPeka');
       } else {
         state.lampPending = true; // 後ペカ(第3停止ボタンを離した瞬間) → 次ゲームから揃えられる
       }
     }
     state.counts.start++;
     state.counts.total++; // BB/RB中の回転はスタート・総回転数に含めない
+    mAdd('spins');
   }
 
   /* リール始動 */
@@ -912,6 +1070,7 @@ function onStopRelease() {
   if (state.thirdStopPressed && state.lampPending) {
     state.lampPending = false;
     lightLamp();
+    mSet('latePeka');
   }
 }
 
@@ -1037,6 +1196,7 @@ function resolveGame() {
 
 function addPayout(n) {
   state.totalOut += n;
+  mAdd('lifeOut', n);
   state.mochi += n; // 持ちメダルは総所持枚数
   state.credit = Math.min(CREDIT_MAX, state.credit + n);
 }
@@ -1062,13 +1222,17 @@ function startBonus(type) {
   state.bonusFlag = null;
   state.smallFlag = null;
   state.pendingHist = { g: state.counts.start, t: type }; // 履歴グラフ用
-  if (type === 'BB') state.counts.bb++; else state.counts.rb++;
+  if (type === 'BB') { state.counts.bb++; mAdd('bb'); } else { state.counts.rb++; mAdd('rb'); }
+  const sesB = state.counts.bb + state.counts.rb;
+  if (sesB >= 5) mSet('ses5');
+  if (sesB >= 10) mSet('ses10');
   unlightLamp();
   el.topBanner.classList.add('bonus-flash');
   message(type === 'BB' ? 'BIG BONUS!! (最大+252枚)' : 'REGULAR BONUS!! (最大+96枚)', true);
   if (type === 'BB') {
     /* 当選G数から楽曲バージョンを決定 */
     state.bonusVer = pickBBVersion(state.bbWinG || 0);
+    mSet('ver' + state.bonusVer); // ミッション: 楽曲バージョン実戦コンプ
     const v = BB_VERS[state.bonusVer] || BB_VERS.NORMAL;
     /* 777揃い: hit音再生 → 再生終了後にメインBGM(BB終了までループ)。
        hit再生中もレバー等は操作可能(ロックなし)。
@@ -1092,6 +1256,8 @@ function endBonus(payoutSndMs = 0) {
   const got = state.bonusPaid;
   const type = state.bonusType;
   state.inBonus = false;
+  state.hadBonus = true;       // ジャグ連判定用(前回ボーナスあり)
+  state.prevBonusType = type;  // BB→BB / RB→RB連チャン判定用
   refreshPekaBtn(); // ボーナス終了でボタン復帰
   state.bonusType = null;
   state.bonusPaid = 0;
@@ -1143,6 +1309,7 @@ function endBonus(payoutSndMs = 0) {
 function rentCoins() {
   if (state.gamePhase !== 'idle' || state.betLock || state.payoutLock) return;
   state.investYen += 1000;
+  mAdd('investYen', 1000);
   state.mochi += 50;
   state.credit = Math.min(CREDIT_MAX, state.credit + 50);
   audio.playSE('BET', true);
@@ -1157,6 +1324,7 @@ function payback() {
   if (state.mochi <= 0) return;
   const yen = state.mochi * 20; // 1枚 = 20円
   state.kaishuYen += yen;
+  mAdd('kaishuYen', yen);
   state.mochi = 0;
   state.credit = 0;
   audio.playSE('BET', true);
@@ -1383,7 +1551,8 @@ setInterval(() => {
 function saveGame() {
   try {
     const data = {
-      setting: state.setting, customProb: state.customProb, challenge: state.challenge, challengeStats: state.challengeStats, credit: state.credit, mochi: state.mochi,
+      setting: state.setting, customProb: state.customProb, challenge: state.challenge, challengeStats: state.challengeStats,
+      hadBonus: state.hadBonus, prevBonusType: state.prevBonusType, renChain: state.renChain, credit: state.credit, mochi: state.mochi,
       investYen: state.investYen, totalIn: state.totalIn, totalOut: state.totalOut,
       counts: state.counts, bonusFlag: state.bonusFlag,
       lampLit: state.lampLit, inBonus: state.inBonus,
@@ -1411,6 +1580,9 @@ function loadGame() {
     state.challengeStats = (d.challengeStats && typeof d.challengeStats === 'object')
       ? { played: d.challengeStats.played || 0, correct: d.challengeStats.correct || 0 }
       : { played: 0, correct: 0 };
+    state.hadBonus = !!d.hadBonus;
+    state.prevBonusType = d.prevBonusType || null;
+    state.renChain = d.renChain || 0;
     state.credit = d.credit || 0;
     state.mochi = d.mochi || 0;
     /* 旧セーブ移行: 旧仕様は持ちメダルにクレジットを含まないため合算 + 音量を新既定値へ */
@@ -1447,6 +1619,9 @@ function resetData() {
   state.counts = { bb: 0, rb: 0, total: 0, start: 0 };
   state.history = [];
   state.pendingHist = null;
+  state.hadBonus = false;   // 連チャン判定もリセット(リセット直後の誤ジャグ連防止)
+  state.prevBonusType = null;
+  state.renChain = 0;
   renderGraph();
   message('データをリセットしました');
   saveGame();
@@ -1463,6 +1638,7 @@ function resetAll() {
     bbWinG: 0, bonusVer: 'NORMAL', bonusCountHold: false, bonusCountFinal: 0,
     rareLamp: false, kaishuYen: 0, forceBonus: false, customProb: null,
     challenge: null, challengeStats: { played: 0, correct: 0 },
+    hadBonus: false, prevBonusType: null, renChain: 0,
     counts: { bb: 0, rb: 0, total: 0, start: 0 }
   });
   audio.stopBGM();
@@ -1522,6 +1698,7 @@ function closeSubOverlays() {
   $('systemOverlay').hidden = true;
   $('customOverlay').hidden = true;
   $('challengeOverlay').hidden = true;
+  $('missionOverlay').hidden = true;
   if (stopSoundRoom) stopSoundRoom();
   $('soundOverlay').hidden = true;
   $('confirmOverlay').hidden = true;
@@ -1626,7 +1803,9 @@ function bindEvents() {
   });
   $('btnResetMission').addEventListener('click', () => {
     askConfirm('ミッションの進捗をリセットします。\n本当によろしいですか?', () => {
+      mstore = freshMissionStore();
       try { localStorage.removeItem(MISSION_SAVE_KEY); } catch (e) {}
+      if (!$('missionOverlay').hidden) refreshMissionList();
       message('ミッション進捗をリセットしました');
     });
   });
@@ -1779,6 +1958,41 @@ function bindEvents() {
   });
   $('btnCloseChallenge').addEventListener('click', () => { $('challengeOverlay').hidden = true; });
   $('challengeOverlay').addEventListener('click', e => { if (e.target === $('challengeOverlay')) $('challengeOverlay').hidden = true; });
+
+  /* --- ミッション一覧 --- */
+  function refreshMissionList() {
+    const wrap = $('msList');
+    wrap.innerHTML = '';
+    let lastCat = null;
+    let doneCount = 0;
+    MISSIONS.forEach(m => {
+      const done = !!mstore.done[m.id];
+      if (done) doneCount++;
+      if (m.cat !== lastCat) {
+        const h = document.createElement('div');
+        h.className = 'ms-cat';
+        h.textContent = '― ' + m.cat + '系 ―';
+        wrap.appendChild(h);
+        lastCat = m.cat;
+      }
+      const val = Math.min(m.t, Math.max(0, m.v(mstore.st)));
+      const pct = Math.round(val / m.t * 100);
+      const row = document.createElement('div');
+      row.className = 'ms-row' + (done ? ' done' : '');
+      row.innerHTML =
+        `<div class="ms-name"><span>${m.name}</span>${done ? '<span class="ms-check">✔ クリア</span>' : ''}</div>` +
+        `<div class="ms-bar"><div class="ms-fill" style="width:${done ? 100 : pct}%"></div></div>` +
+        `<div class="ms-prog">${done ? m.t : val} / ${m.t}</div>`;
+      wrap.appendChild(row);
+    });
+    $('msSummary').textContent = `達成状況: ${doneCount} / ${MISSIONS.length}`;
+  }
+  $('btnCatMission').addEventListener('click', () => {
+    refreshMissionList();
+    $('missionOverlay').hidden = false;
+  });
+  $('btnCloseMission').addEventListener('click', () => { $('missionOverlay').hidden = true; });
+  $('missionOverlay').addEventListener('click', e => { if (e.target === $('missionOverlay')) $('missionOverlay').hidden = true; });
 
   /* --- サウンドルーム (音楽プレイヤー) --- */
   const SR_TRACKS = [

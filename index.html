@@ -151,7 +151,7 @@
       <div id="menuBtns">
         <button class="menu-btn" id="btnCatChallenge">チャレンジモード</button>
         <button class="menu-btn" id="btnCatCpu" disabled>CPUとプレイ (PC推奨)<small>準備中</small></button>
-        <button class="menu-btn" id="btnCatMission" disabled>ミッション<small>準備中</small></button>
+        <button class="menu-btn" id="btnCatMission">ミッション</button>
         <button class="menu-btn" id="btnCatSound">サウンドルーム</button>
         <button class="menu-btn" id="btnPayList">小役一覧</button>
         <button class="menu-btn" id="btnCatMachine">台設定</button>
@@ -230,6 +230,16 @@
         </div>
       </div>
       <button class="sub-close" id="btnCloseSystem">閉じる</button>
+    </div>
+  </div>
+
+  <!-- ▼ ミッションポップアップ ▼ -->
+  <div id="missionOverlay" class="sub-overlay" hidden>
+    <div id="missionModal" class="sub-modal">
+      <h2>ミッション</h2>
+      <p class="custom-status" id="msSummary"></p>
+      <div id="msList"></div>
+      <button class="sub-close" id="btnCloseMission">閉じる</button>
     </div>
   </div>
 
@@ -321,6 +331,12 @@
       <p class="pay-note">※ボーナス中は2BET固定・毎ゲーム🍇(14枚)</p>
       <button id="btnClosePay">閉じる</button>
     </div>
+  </div>
+
+  <!-- ▼ ミッションクリア通知 ▼ -->
+  <div id="missionToast" hidden>
+    <span class="mt-icon">🏆</span>
+    <div class="mt-body"><b>ミッションクリア!</b><span id="mtName"></span></div>
   </div>
 
 </div>
