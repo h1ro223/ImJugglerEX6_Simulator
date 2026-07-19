@@ -150,7 +150,7 @@
       <h2>MENU</h2>
       <div id="menuBtns">
         <button class="menu-btn" id="btnCatChallenge">チャレンジモード</button>
-        <button class="menu-btn" id="btnCatCpu" disabled>CPUとプレイ (PC推奨)<small>準備中</small></button>
+        <button class="menu-btn" id="btnCatCpu">CPUとプレイ (PC推奨)<small id="cpuBtnState"></small></button>
         <button class="menu-btn" id="btnCatMission">ミッション</button>
         <button class="menu-btn" id="btnCatSound">サウンドルーム</button>
         <button class="menu-btn" id="btnPayList">小役一覧</button>
@@ -340,6 +340,61 @@
   </div>
 
 </div>
+
+<!-- ▼ CPU台 (0002番台・CPUとプレイモード) ▼ -->
+<aside id="cpuSide" hidden>
+  <header id="cpuPanel">
+    <div class="dp-top">
+      <span class="dp-unit">0002番台</span>
+      <span class="dp-name">CPU</span>
+      <span class="cpu-badge">AUTO</span>
+    </div>
+    <div class="dp-body">
+      <div class="dp-grid">
+        <div class="dp-item">
+          <span class="dp-label red">BB</span>
+          <span class="dp-num red" id="cpuBB">0</span>
+        </div>
+        <div class="dp-item">
+          <span class="dp-label yellow">RB</span>
+          <span class="dp-num yellow" id="cpuRB">0</span>
+        </div>
+        <div class="dp-item">
+          <span class="dp-label green">スタート</span>
+          <span class="dp-num green" id="cpuStart">0</span>
+        </div>
+      </div>
+      <div class="dp-side">
+        <div class="dp-item">
+          <span class="dp-label green">総回転数</span>
+          <span class="dp-num green" id="cpuTotal">0</span>
+        </div>
+        <div class="dp-item">
+          <span class="dp-label green">合成確率</span>
+          <span class="dp-num green" id="cpuGosei">1/---</span>
+        </div>
+      </div>
+    </div>
+  </header>
+  <div id="cpuMachine">
+    <div id="cpuReelWindow">
+      <div class="reel" id="cpuReel0"><div class="strip"></div><div class="shade"></div></div>
+      <div class="reel" id="cpuReel1"><div class="strip"></div><div class="shade"></div></div>
+      <div class="reel" id="cpuReel2"><div class="strip"></div><div class="shade"></div></div>
+    </div>
+    <div id="cpuUnder">
+      <div id="cpuGogo">
+        <img id="cpuGogoOff" src="./GOGO/GOGOCHANCE_0.png" alt="GOGO!CHANCE" draggable="false">
+        <img id="cpuGogoOn" src="./GOGO/GOGOCHANCE_1.png" alt="" draggable="false" hidden>
+      </div>
+      <div id="cpuInfo">
+        <div class="cpu-info-row"><span>差枚</span><span class="dp-num green" id="cpuDiff">+0</span></div>
+        <div class="cpu-info-row"><span>状態</span><span id="cpuState">-</span></div>
+      </div>
+    </div>
+  </div>
+</aside>
+
 <script src="./script.js"></script>
 </body>
 </html>
