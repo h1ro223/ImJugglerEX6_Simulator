@@ -74,7 +74,7 @@ function getProbs() {
   }
   if (state.customProb) {
     const c = state.customProb;
-    const p = d => { const n = Number(d); return (isFinite(n) && n >= 1) ? 1 / n : 0; };
+    const p = d => { const n = Number(d); return (isFinite(n) && n >= 1) ? 1 / n : 0; }; // 0や不正値=発生しない(無効)
     return { bb: p(c.bb), rb: p(c.rb), grape: p(c.grape), replay: p(c.replay), cherry: p(c.cherry), bell: p(c.bell), clown: p(c.clown) };
   }
   const sp = SETTINGS[state.setting - 1];
@@ -680,7 +680,7 @@ function bonusAimOk(reelIdx, pos) {
 class Reel {
   constructor(idx, prefix = 'reel', onStopCb = null) {
     this.idx = idx;
-    this.onStopCb = onStopCb; // CPU台などプレイヤー以外の停止処理を差し込める
+    this.onStopCb = onStopCb; // 停止時処理の差し替え用(将来の拡張向け)
     this.el = $(prefix + idx);
     this.strip = this.el.querySelector('.strip');
     this.pos = idx * 7;          // 初期位置をずらす
@@ -771,7 +771,7 @@ const reels = [];
 /* 画像(1280x470)の実比率に合わせたセルに「横幅いっぱい・縦中央」で描画する。
    セル比率=画像比率のため上下の余白なしでピッタリ収まる。
    512x188(1280:470と同比率)に縮小してGPU負荷も削減 */
-const SYM_OPT = {}; // 最適化済み画像キャッシュ (後から生成するCPUリールにも適用)
+const SYM_OPT = {}; // 最適化済み画像キャッシュ (後から生成するリールにも適用)
 function optimizeSymbolImages() {
   const W = 512, H = 188; // 1280:470 と同比率 (512*470/1280=188)
   for (const sym in SYM_IMG) {
@@ -806,7 +806,6 @@ function layoutReels() {
   document.documentElement.style.setProperty('--cellGap', gap + 'px');
   document.documentElement.style.setProperty('--windowH', (cellH * 3 + gap * 2 + peek * 2) + 'px');
   reels.forEach(r => r.resize(cellH + gap, peek));
-  if (cpu.reels.length) cpu.reels.forEach(r => r.resize(cellH + gap, peek));
 }
 
 /* メインループ */
@@ -815,9 +814,6 @@ function loop(t) {
   const dt = Math.min(50, t - lastT || 16);
   lastT = t;
   for (const r of reels) {
-    if (r.mode !== 'stopped') r.update(dt, t);
-  }
-  for (const r of cpu.reels) {
     if (r.mode !== 'stopped') r.update(dt, t);
   }
   requestAnimationFrame(loop);
@@ -1208,179 +1204,6 @@ function addPayout(n) {
   state.credit = Math.min(CREDIT_MAX, state.credit + n);
 }
 
-/* ================= CPUとプレイ (0002番台・独立シミュレーション) ================= */
-/* プレイヤー側のstate/抽選には一切触れない自己完結モジュール。
-   ・常時Auto相当 / 音は固定ミュート(音声処理を一切呼ばない)
-   ・設定はON/OFF切替のたびにランダム(1〜6)
-   ・演出用の簡易停止(目押しは常に成功) */
-const cpu = {
-  on: false, setting: 1,
-  counts: { bb: 0, rb: 0, total: 0, start: 0 },
-  diff: 0,
-  inBonus: false, bonusType: null, bonusPaid: 0,
-  bonusFlag: null, lampLit: false, lampPending: false, hadBonus: false,
-  reels: [], timers: [], phase: 'idle'
-};
-function cpuSchedule(fn, ms) {
-  const id = setTimeout(() => {
-    cpu.timers = cpu.timers.filter(t => t !== id);
-    if (cpu.on) fn();
-  }, ms);
-  cpu.timers.push(id);
-}
-function cpuClearTimers() {
-  cpu.timers.forEach(clearTimeout);
-  cpu.timers = [];
-}
-/* CPUの抽選 (プレイヤー側と同じ確率テーブル・SETTINGSベース) */
-function cpuLottery() {
-  const sp = SETTINGS[cpu.setting - 1];
-  if (!cpu.bonusFlag) {
-    const r = Math.random();
-    if (r < sp.bb) cpu.bonusFlag = 'BB';
-    else if (r < sp.bb + sp.rb) cpu.bonusFlag = 'RB';
-    if (cpu.bonusFlag && !cpu.lampLit) {
-      if (Math.random() < PEKA_FIRST) cpuSetLamp(true); // 先ペカ
-      else cpu.lampPending = true;                      // 後ペカ(第3停止で点灯)
-    }
-  }
-  let small = null;
-  const r2 = Math.random(); let acc = 0;
-  if (r2 < (acc += sp.grape)) small = 'GRAPE';
-  else if (r2 < (acc += P_REPLAY)) small = 'REPLAY';
-  else if (r2 < (acc += P_CHERRY)) small = 'CHERRY';
-  else if (r2 < (acc += P_BELL)) small = 'BELL';
-  else if (r2 < (acc += P_CLOWN)) small = 'CLOWN';
-  return small;
-}
-/* 指定役が表示される停止位置3つを構成 (役なし=完全ハズレ目) */
-const CPU_LINES = [[0, 0, 0], [1, 1, 1], [2, 2, 2], [0, 1, 2], [2, 1, 0]];
-function cpuPickCols(role) {
-  const randPos = () => Math.floor(Math.random() * KOMA);
-  for (let tries = 0; tries < 300; tries++) {
-    let ps;
-    if (!role) {
-      ps = [randPos(), randPos(), randPos()];
-    } else {
-      const line = CPU_LINES[Math.floor(Math.random() * CPU_LINES.length)];
-      const sym = TARGETS[role]; // 例: BB=[7,7,7] CHERRY=[2,null,null]
-      ps = [0, 1, 2].map(i => {
-        if (sym[i] == null) return randPos();
-        const idxs = [];
-        REEL_DATA[i].forEach((s, k) => { if (s === sym[i]) idxs.push(k); });
-        const idx = idxs[Math.floor(Math.random() * idxs.length)];
-        return modK(idx - line[i]);
-      });
-    }
-    const wins = evalWins(ps.map((p, i) => windowCol(i, p)));
-    const roles = wins.map(w => w.role);
-    if (!role) { if (roles.length === 0) return ps; continue; }
-    if (roles.includes(role) && roles.every(r => r === role)) return ps;
-  }
-  return [randPos(), randPos(), randPos()]; // 保険(演出用のため厳密性は不要)
-}
-function cpuSetLamp(onFlag) {
-  cpu.lampLit = onFlag;
-  if (onFlag) cpu.lampPending = false;
-  $('cpuGogoOn').hidden = !onFlag;
-}
-function cpuUpdateUI() {
-  $('cpuBB').textContent = String(cpu.counts.bb);
-  $('cpuRB').textContent = String(cpu.counts.rb);
-  $('cpuStart').textContent = String(cpu.counts.start);
-  $('cpuTotal').textContent = String(cpu.counts.total);
-  const b = cpu.counts.bb + cpu.counts.rb;
-  $('cpuGosei').textContent = b > 0 ? '1/' + (cpu.counts.total / b).toFixed(1) : '1/---';
-  const d = $('cpuDiff');
-  d.textContent = (cpu.diff >= 0 ? '+' : '') + cpu.diff;
-  d.classList.toggle('minus', cpu.diff < 0);
-  $('cpuState').textContent = cpu.inBonus
-    ? (cpu.bonusType === 'BB' ? 'BIG BONUS中' : 'REGULAR BONUS中')
-    : (cpu.lampLit ? 'GOGO!CHANCE!' : '通常プレイ中');
-}
-/* CPUの1ゲーム */
-function cpuRunGame() {
-  if (!cpu.on) return;
-  cpu.phase = 'spinning';
-  const inB = cpu.inBonus;
-  if (!inB) { cpu.counts.start++; cpu.counts.total++; }
-  const bet = inB ? 2 : 3;
-  cpu.diff -= bet;
-  /* 出目決定: ボーナス中=毎Gブドウ / 通常=抽選。小役優先、なければ点灯中ボーナスを整列 */
-  let role = null;
-  if (inB) {
-    role = 'GRAPE';
-  } else {
-    role = cpuLottery();
-    if (!role && cpu.bonusFlag && cpu.lampLit) role = cpu.bonusFlag;
-  }
-  const cols = cpuPickCols(role);
-  cpu.reels.forEach((r, i) => r.startSpin(i * 70));
-  /* 順に停止 (人間らしい間隔) */
-  [0, 1, 2].forEach(i => {
-    cpuSchedule(() => {
-      const r = cpu.reels[i];
-      r.target = cols[i];
-      let rm = modK(r.pos - cols[i]);
-      if (rm < 0.2) rm += KOMA;
-      r.remain = rm;
-      r.mode = 'stopping';
-    }, 700 + i * 300);
-  });
-  /* 第3停止後の精算 */
-  cpuSchedule(() => {
-    if (cpu.lampPending && !inB) cpuSetLamp(true); // 後ペカ
-    const pay = inB ? 14 : payoutFor(evalWins(cols.map((p, i) => windowCol(i, p))), bet);
-    cpu.diff += pay;
-    if (!inB && (role === 'BB' || role === 'RB')) {
-      /* ボーナス開始 */
-      cpu.inBonus = true;
-      cpu.bonusType = role;
-      cpu.bonusPaid = 0;
-      cpu.bonusFlag = null;
-      if (role === 'BB') cpu.counts.bb++; else cpu.counts.rb++;
-      cpuSetLamp(false);
-    } else if (inB) {
-      cpu.bonusPaid += pay;
-      const limit = cpu.bonusType === 'BB' ? BB_LIMIT : RB_LIMIT;
-      if (cpu.bonusPaid > limit) { /* ボーナス終了 */
-        cpu.inBonus = false;
-        cpu.bonusType = null;
-        cpu.counts.start = 0;
-        cpu.hadBonus = true;
-      }
-    }
-    cpu.phase = 'idle';
-    cpuUpdateUI();
-  }, 700 + 2 * 300 + 400);
-  /* 次ゲーム (規定ウェイト相当のペース+ゆらぎ) */
-  cpuSchedule(cpuRunGame, (cpu.inBonus ? 3000 : WAIT_MS) + 200 + Math.random() * 400);
-  cpuUpdateUI();
-}
-function setCpuMode(onFlag) {
-  cpu.on = onFlag;
-  document.body.classList.toggle('cpu-mode', onFlag);
-  $('cpuSide').hidden = !onFlag;
-  if (onFlag) {
-    /* ONにするたび設定はランダムで変わる */
-    cpu.setting = 1 + Math.floor(Math.random() * 6);
-    cpu.counts = { bb: 0, rb: 0, total: 0, start: 0 };
-    cpu.diff = 0;
-    cpu.inBonus = false; cpu.bonusType = null; cpu.bonusPaid = 0;
-    cpu.bonusFlag = null; cpu.hadBonus = false;
-    cpuSetLamp(false);
-    if (!cpu.reels.length) {
-      cpu.reels = [new Reel(0, 'cpuReel', () => {}), new Reel(1, 'cpuReel', () => {}), new Reel(2, 'cpuReel', () => {})];
-    }
-    layoutReels(); // CPU側リールのサイズも合わせる
-    cpuUpdateUI();
-    cpuSchedule(cpuRunGame, 800);
-  } else {
-    cpuClearTimers();
-    cpu.reels.forEach(r => { r.mode = 'stopped'; });
-  }
-}
-
 /* --- BB/RB当選中カウンター点滅 (表示0.5秒→非表示0.5秒ループ) --- */
 function setBonusBlink(type, on) {
   (type === 'BB' ? el.dpBB : el.dpRB).classList.toggle('bonus-blink', on);
@@ -1395,6 +1218,7 @@ function startBonus(type) {
   state.inBonus = true;
   state.bonusType = type;
   refreshPekaBtn(); // BB/RB中表示に切替 (bonusType確定後に呼ぶこと)
+  refreshSkipBtn();
   state.bonusPaid = 0;
   state.bonusCountHold = false;
   state.bonusCountFinal = 0;
@@ -1424,6 +1248,7 @@ function startBonus(type) {
     audio.playBGMOnce(hit, () => {
       state.bbHitPlaying = false;
       if (state.inBonus && state.bonusType === 'BB') audio.playBGM(v.loop);
+      refreshSkipBtn(); // BB系BGM開始と同時にスキップ有効化
       updateUI();
     });
   } else {
@@ -1439,6 +1264,7 @@ function endBonus(payoutSndMs = 0) {
   state.hadBonus = true;       // ジャグ連判定用(前回ボーナスあり)
   state.prevBonusType = type;  // BB→BB / RB→RB連チャン判定用
   refreshPekaBtn(); // ボーナス終了でボタン復帰
+  refreshSkipBtn();
   state.bonusType = null;
   state.bonusPaid = 0;
   state.counts.start = 0;
@@ -1845,6 +1671,31 @@ function openModal() {
   refreshPekaBtn();
   refreshSettingBtns();
 }
+/* 「現在のボーナスをスキップ」ボタンの有効/無効
+   有効化条件: BB=BBhit系mp3が停止しBB系BGMが始まった後 / RB=RB.mp3再生開始と同時(=RB突入直後) */
+function refreshSkipBtn() {
+  const b = $('btnSkipBonus');
+  const en = state.inBonus && !(state.bonusType === 'BB' && state.bbHitPlaying);
+  b.disabled = !en;
+  b.textContent = state.inBonus
+    ? `現在の${state.bonusType}をスキップ (最大枚数を即獲得)`
+    : '現在のボーナスをスキップ (ボーナス中のみ)';
+}
+/* ボーナスを即時消化: 最大払い出し(BB294枚/RB112枚)まで一気に獲得して通常の終了フローへ */
+function skipBonus() {
+  if (!state.inBonus) return;
+  if (state.bonusType === 'BB' && state.bbHitPlaying) return;
+  const target = state.bonusType === 'BB' ? BB_LIMIT + 14 : RB_LIMIT + 14; // 294 / 112
+  const remain = Math.max(0, target - state.bonusPaid);
+  addPayout(remain);          // メダル・累計・ミッション進捗に反映
+  state.bonusPaid = target;
+  syncMedalDisplay();         // カウントアップ演出なしで即時反映 (COUNTも294/112に)
+  endBonus(0);                // 通常の終了フロー (BGM即停止→Finish再生→COUNT消灯)
+  refreshSkipBtn();
+  saveGame();
+  updateUI();
+}
+
 function refreshPekaBtn() {
   const b = el.btnForcePeka;
   if (state.challenge && state.challenge.active) {
@@ -1879,6 +1730,8 @@ function closeSubOverlays() {
   $('customOverlay').hidden = true;
   $('challengeOverlay').hidden = true;
   $('missionOverlay').hidden = true;
+  $('resetOverlay').hidden = true;
+  $('volOverlay').hidden = true;
   if (stopSoundRoom) stopSoundRoom();
   $('soundOverlay').hidden = true;
   $('confirmOverlay').hidden = true;
@@ -1972,6 +1825,25 @@ function bindEvents() {
   el.volBgm.addEventListener('change', saveGame);
   el.volSe.addEventListener('input', () => { state.seVol = el.volSe.value / 100; audio.applyVolumes(); });
   el.volSe.addEventListener('change', () => { audio.playSE('BET'); saveGame(); });
+  /* --- 音量設定ポップアップ (♪ボタン) --- */
+  function refreshVolPop() {
+    el.chkBgm.checked = state.bgmOn;
+    el.chkSe.checked = state.seOn;
+    el.volBgm.value = Math.round(state.bgmVol * 100);
+    el.volSe.value = Math.round(state.seVol * 100);
+  }
+  $('btnVolPop').addEventListener('click', () => {
+    audio.ensure();
+    refreshVolPop();
+    $('volOverlay').hidden = false;
+  });
+  $('btnCloseVol').addEventListener('click', () => { $('volOverlay').hidden = true; });
+  $('volOverlay').addEventListener('click', e => { if (e.target === $('volOverlay')) $('volOverlay').hidden = true; });
+
+  /* --- リセットポップアップ --- */
+  $('btnCatReset').addEventListener('click', () => { $('resetOverlay').hidden = false; });
+  $('btnCloseReset').addEventListener('click', () => { $('resetOverlay').hidden = true; });
+  $('resetOverlay').addEventListener('click', e => { if (e.target === $('resetOverlay')) $('resetOverlay').hidden = true; });
   $('btnResetData').addEventListener('click', () => {
     askConfirm('データ(BB/RB回数・回転数・履歴グラフ)をリセットします。\n本当によろしいですか?', () => { resetData(); });
   });
@@ -1999,7 +1871,7 @@ function bindEvents() {
 
   /* --- カテゴリポップアップ (ルートメニューの上に重ねる) --- */
   $('btnCatMachine').addEventListener('click', () => {
-    refreshSettingBtns(); refreshSpeedBtns(); refreshPekaBtn();
+    refreshSettingBtns(); refreshSpeedBtns(); refreshPekaBtn(); refreshSkipBtn();
       $('machineOverlay').hidden = false;
   });
   $('btnCloseMachine').addEventListener('click', () => { $('machineOverlay').hidden = true; });
@@ -2022,12 +1894,18 @@ function bindEvents() {
     CUSTOM_KEYS.forEach(({ k, label, def }) => {
       const row = document.createElement('div');
       row.className = 'custom-row';
-      const cur = state.customProb && isFinite(Number(state.customProb[k]))
-        ? Number(state.customProb[k])
-        : def(state.setting);
+      const stored = state.customProb && isFinite(Number(state.customProb[k]))
+        ? Number(state.customProb[k]) : null;
+      const isOff = stored === 0; // 0=無効(発生しない)
+      const cur = (stored !== null && stored !== 0) ? stored : def(state.setting);
       row.innerHTML = `<label>${label}</label><span class="frac">1 /</span>` +
-        `<input type="number" min="1" step="0.01" id="customIn_${k}" value="${(Math.round(cur * 100) / 100)}">`;
+        `<input type="number" min="0" step="0.01" id="customIn_${k}" value="${(Math.round(cur * 100) / 100)}"${isOff ? ' disabled' : ''}>` +
+        `<label class="c-off"><input type="checkbox" id="customOff_${k}"${isOff ? ' checked' : ''}>無効</label>`;
       wrap.appendChild(row);
+      /* 無効☑で入力欄をグレーアウト */
+      row.querySelector('#customOff_' + k).addEventListener('change', e => {
+        row.querySelector('#customIn_' + k).disabled = e.target.checked;
+      });
     });
     /* 状態表示 */
     let stEl = $('customStatus');
@@ -2039,6 +1917,12 @@ function bindEvents() {
     }
     stEl.textContent = state.customProb ? '● カスタム適用中' : `○ 未適用 (通常:設定${state.setting})`;
   }
+  $('btnSkipBonus').addEventListener('click', () => {
+    if (!state.inBonus || (state.bonusType === 'BB' && state.bbHitPlaying)) return;
+    if (state.gamePhase !== 'idle' || state.payoutLock) { askConfirm('リール停止・払い出し完了後にスキップできます。', null, true); return; }
+    const t = state.bonusType === 'BB' ? 'BB (294枚)' : 'RB (112枚)';
+    askConfirm(`現在の${t}を最大枚数までスキップして終了します。\nよろしいですか?`, () => { skipBonus(); closeModal(); });
+  });
   $('btnCustomProb').addEventListener('click', () => {
     buildCustomRows();
     $('customOverlay').hidden = false;
@@ -2047,11 +1931,12 @@ function bindEvents() {
     const c = {};
     let ok = true;
     CUSTOM_KEYS.forEach(({ k }) => {
+      if ($('customOff_' + k).checked) { c[k] = 0; return; } // 無効(発生しない)
       const v = Number($('customIn_' + k).value);
-      if (!isFinite(v) || v < 1) ok = false;
+      if (!isFinite(v) || v < 0 || (v > 0 && v < 1)) ok = false; // 0=無効もOK
       c[k] = v;
     });
-    if (!ok) { askConfirm('1以上の数値を入力してください。', null); return; }
+    if (!ok) { askConfirm('0(無効) または 1以上の数値を入力してください。', null, true); return; }
     state.customProb = c;
     refreshSettingBtns();
     buildCustomRows();
@@ -2173,28 +2058,6 @@ function bindEvents() {
   });
   $('btnCloseMission').addEventListener('click', () => { $('missionOverlay').hidden = true; });
   $('missionOverlay').addEventListener('click', e => { if (e.target === $('missionOverlay')) $('missionOverlay').hidden = true; });
-
-  /* --- CPUとプレイ --- */
-  function refreshCpuBtn() {
-    $('cpuBtnState').textContent = cpu.on ? `● 対戦中 (タップで終了)` : '';
-  }
-  $('btnCatCpu').addEventListener('click', () => {
-    if (!cpu.on) {
-      askConfirm('CPU(0002番台)との同時プレイを開始します。\nCPUの設定は毎回ランダムに選ばれます。\n※画面が横に広がるためPC推奨です', () => {
-        setCpuMode(true);
-        refreshCpuBtn();
-        closeModal();
-        message('CPUとプレイ開始! 0002番台が稼働中...');
-      });
-    } else {
-      askConfirm('CPUとのプレイを終了しますか?\n(CPU側のデータはリセットされます)', () => {
-        setCpuMode(false);
-        refreshCpuBtn();
-        message('CPUとのプレイを終了しました');
-      });
-    }
-  });
-  refreshCpuBtn();
 
   /* --- サウンドルーム (音楽プレイヤー) --- */
   const SR_TRACKS = [
