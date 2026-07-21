@@ -1355,9 +1355,9 @@ function autoClearTimers() {
   autoTimers.forEach(clearTimeout);
   autoTimers.length = 0;
 }
-/* レバーON後: Lever.mp3終了+1秒で第1停止 → 0.15秒間隔で第2・第3停止 */
+/* レバーON後: Lever.mp3終了と同時に第1停止(レバーから約0.5秒) → 順次第2・第3停止 */
 function scheduleAutoStops() {
-  const base = audio.duration('LEVER', 300) + 500; // Lever.mp3終了から0.5秒後に第1停止へ
+  const base = audio.duration('LEVER', 500); // Lever.mp3の長さ=約0.5秒
   autoSchedule(() => autoPress(0), base);
 }
 function autoPress(i) {
@@ -1664,13 +1664,34 @@ function openModal() {
   refreshSpeedBtns();
 
   el.chkMsgBar.checked = state.msgBarOn;
-  el.chkBgm.checked = state.bgmOn;
-  el.chkSe.checked = state.seOn;
-  el.volBgm.value = Math.round(state.bgmVol * 100);
-  el.volSe.value = Math.round(state.seVol * 100);
+  syncSoundControls();
   refreshPekaBtn();
   refreshSettingBtns();
 }
+/* --- サウンド設定の共通処理 (♪ポップアップとシステム設定の両方から操作可能・常に同期) --- */
+const SOUND_CTRL_PAIRS = { chkBgm: 'chkBgm2', volBgm: 'volBgm2', chkSe: 'chkSe2', volSe: 'volSe2' };
+function syncSoundControls() {
+  [['chkBgm', state.bgmOn], ['chkSe', state.seOn]].forEach(([id, val]) => {
+    $(id).checked = val;
+    $(SOUND_CTRL_PAIRS[id]).checked = val;
+  });
+  [['volBgm', state.bgmVol], ['volSe', state.seVol]].forEach(([id, val]) => {
+    const v = Math.round(val * 100);
+    $(id).value = v;
+    $(SOUND_CTRL_PAIRS[id]).value = v;
+  });
+}
+function applyBgmToggle(on) {
+  state.bgmOn = on;
+  if (!on) audio.stopBGM();
+  else if (state.inBonus) audio.playBGM(state.bonusType === 'BB' ? (BB_VERS[state.bonusVer] || BB_VERS.NORMAL).loop : 'RB'); // ボーナス中ならBGM再開
+  syncSoundControls();
+  saveGame();
+}
+function applySeToggle(on) { state.seOn = on; syncSoundControls(); saveGame(); }
+function applyBgmVol(v100) { state.bgmVol = v100 / 100; audio.setBgmVolume(state.bgmVol); syncSoundControls(); }
+function applySeVol(v100) { state.seVol = v100 / 100; audio.applyVolumes(); syncSoundControls(); }
+
 /* 「現在のボーナスをスキップ」ボタンの有効/無効
    有効化条件: BB=BBhit系mp3が停止しBB系BGMが始まった後 / RB=RB.mp3再生開始と同時(=RB突入直後) */
 function refreshSkipBtn() {
@@ -1811,30 +1832,21 @@ function bindEvents() {
     refreshPekaBtn();
     if (state.forceBonus) message('次のゲームでGOGO!CHANCE確定!');
   });
-  el.chkBgm.addEventListener('change', () => {
-    state.bgmOn = el.chkBgm.checked;
-    if (!state.bgmOn) audio.stopBGM();
-    else if (state.inBonus) audio.playBGM(state.bonusType === 'BB' ? (BB_VERS[state.bonusVer] || BB_VERS.NORMAL).loop : 'RB'); // ボーナス中ならBGM再開
-    saveGame();
+  /* サウンド操作は♪ポップアップ(無印ID)とシステム設定(2付きID)の両方から可能 */
+  ['chkBgm', 'chkBgm2'].forEach(id => $(id).addEventListener('change', e => applyBgmToggle(e.target.checked)));
+  ['chkSe', 'chkSe2'].forEach(id => $(id).addEventListener('change', e => applySeToggle(e.target.checked)));
+  ['volBgm', 'volBgm2'].forEach(id => {
+    $(id).addEventListener('input', e => applyBgmVol(Number(e.target.value)));
+    $(id).addEventListener('change', saveGame);
   });
-  el.chkSe.addEventListener('change', () => { state.seOn = el.chkSe.checked; saveGame(); });
-  el.volBgm.addEventListener('input', () => {
-    state.bgmVol = el.volBgm.value / 100;
-    audio.setBgmVolume(state.bgmVol);
+  ['volSe', 'volSe2'].forEach(id => {
+    $(id).addEventListener('input', e => applySeVol(Number(e.target.value)));
+    $(id).addEventListener('change', () => { audio.playSE('BET'); saveGame(); });
   });
-  el.volBgm.addEventListener('change', saveGame);
-  el.volSe.addEventListener('input', () => { state.seVol = el.volSe.value / 100; audio.applyVolumes(); });
-  el.volSe.addEventListener('change', () => { audio.playSE('BET'); saveGame(); });
   /* --- 音量設定ポップアップ (♪ボタン) --- */
-  function refreshVolPop() {
-    el.chkBgm.checked = state.bgmOn;
-    el.chkSe.checked = state.seOn;
-    el.volBgm.value = Math.round(state.bgmVol * 100);
-    el.volSe.value = Math.round(state.seVol * 100);
-  }
   $('btnVolPop').addEventListener('click', () => {
     audio.ensure();
-    refreshVolPop();
+    syncSoundControls();
     $('volOverlay').hidden = false;
   });
   $('btnCloseVol').addEventListener('click', () => { $('volOverlay').hidden = true; });
@@ -1878,10 +1890,7 @@ function bindEvents() {
   $('machineOverlay').addEventListener('click', e => { if (e.target === $('machineOverlay')) $('machineOverlay').hidden = true; });
   $('btnCatSystem').addEventListener('click', () => {
     el.chkMsgBar.checked = state.msgBarOn;
-    el.chkBgm.checked = state.bgmOn;
-    el.chkSe.checked = state.seOn;
-    el.volBgm.value = Math.round(state.bgmVol * 100);
-    el.volSe.value = Math.round(state.seVol * 100);
+    syncSoundControls();
     $('systemOverlay').hidden = false;
   });
   $('btnCloseSystem').addEventListener('click', () => { $('systemOverlay').hidden = true; });
