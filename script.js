@@ -102,6 +102,20 @@ const SPEED      = KOMA / REV_MS;  // コマ/ms
 const curSpeed   = () => SPEED * state.reelSpeed; // リール回転速度倍率を適用
 const DECEL_KOMA = 1.05;   // (旧減速演出用・現在は未使用。ガチッと即停止に変更済み)
 const WAIT_MS    = 1500;   // ゲーム間ウェイト(実機は4.1秒規定 4100　現在は1.5秒 1500)
+/* 隠しコマンド (PC限定・サイレント発動)
+   待機中に G,O,G,O → 次プレイでペカ確定(通常) / G,O,G,O,7,7,7 → レインボー(中段チェリーBB)確定
+   点灯タイミングはいつも通り先ペカ15%/後ペカ85%の抽選 */
+let secretBuf = '';
+function consumeSecretCommand() {
+  let mode = null;
+  if (secretBuf.endsWith('gogo777')) mode = 'rare';
+  else if (secretBuf.endsWith('gogo')) mode = 'normal';
+  secretBuf = '';
+  if (mode === 'rare') state.forceBonus = 'rare';
+  else if (mode === 'normal' && !state.forceBonus) state.forceBonus = true;
+  return mode;
+}
+
 const PEKA_FIRST = 0.15;   // 先ペカ(レバーON時点灯)の割合。残り85%は後ペカ(第3停止離し)
 const BB_LIMIT   = 280;    // BB: 280枚を超える払い出しで終了
 const RB_LIMIT   = 98;     // RB: 98枚を超える払い出しで終了
@@ -949,10 +963,15 @@ function startGame() {
     const sp = getProbs(); // カスタム設定モード適用中はカスタム確率
     let newBonus = false, rareHit = false, dupCherry = false;
     const hadFlag = !!state.bonusFlag; // 楽曲判定用: このゲームで新規当選したか
-    /* 設定メニュー「ペカ確定」: 確率無視でボーナスフラグ確定 + 第3停止離しで告知 */
+    consumeSecretCommand(); // 隠しコマンド入力があればここでforceBonusに変換
+    /* 「ペカ確定」(メニュー/隠しコマンド): 確率無視でボーナスフラグ確定 */
     if (state.forceBonus) {
+      const rare = state.forceBonus === 'rare';
       state.forceBonus = false;
-      if (!state.bonusFlag) {
+      if (rare && !state.bonusFlag) {
+        state.bonusFlag = 'BB'; // レインボー=中段チェリー=BB確定
+        rareHit = true;
+      } else if (!state.bonusFlag) {
         const ratio = sp.bb / (sp.bb + sp.rb);
         state.bonusFlag = Math.random() < ratio ? 'BB' : 'RB';
       }
@@ -2240,6 +2259,14 @@ function bindEvents() {
   };
   document.addEventListener('keydown', e => {
     if (e.repeat) return;
+    /* 隠しコマンド入力の記録 (待機中のみ・G/O/7以外でリセット。レバー系キーは温存) */
+    {
+      const kk = e.key.toLowerCase();
+      if (state.gamePhase === 'idle' && !state.inBonus) {
+        if (kk === 'g' || kk === 'o' || kk === '7') secretBuf = (secretBuf + kk).slice(-7);
+        else if (kk !== ' ' && kk !== 'enter') secretBuf = '';
+      }
+    }
     if (!el.modalOverlay.hidden) return;
     audio.ensure();
     const k = e.key.toLowerCase();
