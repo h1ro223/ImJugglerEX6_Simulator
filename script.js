@@ -1083,6 +1083,7 @@ function lightLamp() {
   el.gogoImgOn.hidden = false; // 事前読込済みの点灯画像を即時表示(音と同時)
   el.gogoLamp.classList.add('lit');
   el.gogoLamp.classList.toggle('rainbow', state.rareLamp); // 中段チェリー時はレインボー
+  $('gogoImgRainbow').hidden = !state.rareLamp; // CHANCE文字レインボー画像(GOGOCHANCE_2.png)
   audio.playSE('GOGO');
   state.gogoSndEnd = performance.now() + (state.seOn ? audio.duration('GOGO', 1200) : 0);
   refreshPekaBtn(); // モーダルを開いたままでもボタン表示を追従
@@ -1094,6 +1095,7 @@ function unlightLamp() {
   state.rareLamp = false;
   el.gogoImgOn.hidden = true;
   el.gogoLamp.classList.remove('lit', 'rainbow');
+  $('gogoImgRainbow').hidden = true;
   refreshPekaBtn();
 }
 
@@ -1892,6 +1894,54 @@ function bindEvents() {
     el.chkMsgBar.checked = state.msgBarOn;
     syncSoundControls();
     $('systemOverlay').hidden = false;
+  });
+  /* --- 全データのインポート/エクスポート (JSON) --- */
+  $('btnExportData').addEventListener('click', () => {
+    try {
+      saveGame(); saveMissions(); // 最新状態を書き出してから収集
+      const payload = {
+        app: 'imjuggler_ex6', version: 2, exportedAt: new Date().toISOString(),
+        save: JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'),
+        missions: JSON.parse(localStorage.getItem(MISSION_SAVE_KEY) || 'null')
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const d = new Date();
+      a.download = 'imjuggler_ex6_save_' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') + '.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      message('データをエクスポートしました');
+    } catch (e) {
+      askConfirm('エクスポートに失敗しました。', null, true);
+    }
+  });
+  $('btnImportData').addEventListener('click', () => { $('importFile').click(); });
+  $('importFile').addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    const fr = new FileReader();
+    fr.onload = () => {
+      try {
+        const d = JSON.parse(fr.result);
+        if (!d || d.app !== 'imjuggler_ex6' || (!d.save && !d.missions)) throw new Error('bad');
+        askConfirm('インポートすると現在のデータは上書きされ、\nページを再読み込みします。よろしいですか?', () => {
+          try {
+            if (d.save) localStorage.setItem(SAVE_KEY, JSON.stringify(d.save));
+            if (d.missions) localStorage.setItem(MISSION_SAVE_KEY, JSON.stringify(d.missions));
+            location.reload();
+          } catch (err) {
+            askConfirm('インポートに失敗しました。', null, true);
+          }
+        });
+      } catch (err) {
+        askConfirm('ファイルの形式が正しくありません。\n(このゲームのエクスポートJSONを選んでください)', null, true);
+      }
+    };
+    fr.readAsText(f);
   });
   $('btnCloseSystem').addEventListener('click', () => { $('systemOverlay').hidden = true; });
   $('systemOverlay').addEventListener('click', e => { if (e.target === $('systemOverlay')) $('systemOverlay').hidden = true; });

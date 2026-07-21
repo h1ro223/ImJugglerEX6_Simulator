@@ -95,6 +95,7 @@
         <div id="gogoLamp">
           <img id="gogoImg" src="./GOGO/GOGOCHANCE_0.png" alt="GOGO!CHANCE" draggable="false">
           <img id="gogoImgOn" src="./GOGO/GOGOCHANCE_1.png" alt="" draggable="false" hidden>
+          <img id="gogoImgRainbow" src="./GOGO/GOGOCHANCE_2.png" alt="" draggable="false" hidden>
         </div>
         <div id="segArea">
           <div class="seg-box">
@@ -217,6 +218,14 @@
           <input type="checkbox" id="chkSe2" checked>
         </label>
         <div class="vol-row"><span>SE音量</span><input type="range" id="volSe2" min="0" max="100" value="35"></div>
+      </div>
+      <div class="modal-section">
+        <h3>データ管理</h3>
+        <div class="io-btns">
+          <button class="gold-btn" id="btnExportData">エクスポート<small>JSON保存</small></button>
+          <button class="gold-btn" id="btnImportData">インポート<small>JSON読込</small></button>
+        </div>
+        <input type="file" id="importFile" accept=".json,application/json" hidden>
       </div>
       <button class="sub-close" id="btnCloseSystem">閉じる</button>
     </div>

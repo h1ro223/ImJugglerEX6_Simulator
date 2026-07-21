@@ -232,13 +232,15 @@ html, body {
 #gogoImgOn { position: absolute; inset: 0; } /* 点灯画像を重ねて即時切り替え(フェード防止) */
 #gogoLamp img[hidden] { display: none; }
 #gogoLamp.lit img { animation: gogoGlow 1s ease-in-out infinite; }
-#gogoLamp.lit.rainbow img { animation: gogoRainbow 1.4s linear infinite; }
-@keyframes gogoRainbow {
-  0%   { filter: hue-rotate(0deg)   drop-shadow(0 0 14px rgba(255,120,120,1)) brightness(1.25); }
-  25%  { filter: hue-rotate(90deg)  drop-shadow(0 0 14px rgba(255,255,120,1)) brightness(1.25); }
-  50%  { filter: hue-rotate(180deg) drop-shadow(0 0 14px rgba(120,255,180,1)) brightness(1.25); }
-  75%  { filter: hue-rotate(270deg) drop-shadow(0 0 14px rgba(120,180,255,1)) brightness(1.25); }
-  100% { filter: hue-rotate(360deg) drop-shadow(0 0 14px rgba(255,120,120,1)) brightness(1.25); }
+#gogoImgRainbow { position: absolute; inset: 0; z-index: 2; } /* CHANCE文字のみの透過画像(GOGOCHANCE_1の上に重ねる) */
+/* 白文字を着色してから色相を回す(sepia→saturateで白に色を乗せる方式) */
+#gogoLamp.lit.rainbow #gogoImgRainbow {
+  animation: chanceRainbow 1.4s linear infinite;
+}
+@keyframes chanceRainbow {
+  0%   { filter: sepia(1) saturate(8) hue-rotate(0deg)   brightness(1.1) drop-shadow(0 0 6px rgba(255,255,255,.55)); }
+  100% { filter: sepia(1) saturate(8) hue-rotate(360deg) brightness(1.1) drop-shadow(0 0 6px rgba(255,255,255,.55)); }
+}
 }
 @keyframes gogoGlow {
   0%,100% { filter: drop-shadow(0 0 4px rgba(120,120,255,.9)) brightness(1); }
@@ -452,6 +454,10 @@ html, body {
 .custom-btns { display: flex; gap: 8px; margin-top: 10px; }
 .custom-btns .gold-btn { flex: 1.2; margin: 0; }
 .custom-btns .sub-close { flex: 1; margin-top: 0; }
+
+.io-btns { display: flex; gap: 8px; }
+.io-btns .gold-btn { flex: 1; margin: 0; }
+.io-btns .gold-btn small { display: block; font-size: 9px; font-weight: normal; margin-top: 2px; }
 
 /* ================= リセットポップアップ ================= */
 .menu-btn.danger-menu { border-color: #7a3a42; color: #ff9a9a; }
