@@ -111,8 +111,8 @@ function consumeSecretCommand() {
   if (secretBuf.endsWith('gogo777')) mode = 'rare';
   else if (secretBuf.endsWith('gogo')) mode = 'normal';
   secretBuf = '';
-  if (mode === 'rare') state.forceBonus = 'rare';
-  else if (mode === 'normal' && !state.forceBonus) state.forceBonus = true;
+  if (mode === 'rare') { state.forceBonus = 'rare'; mSet('cmdRare'); }
+  else if (mode === 'normal') { if (!state.forceBonus) state.forceBonus = true; mSet('cmdGogo'); }
   return mode;
 }
 
@@ -181,7 +181,28 @@ const MISSIONS = [
   { id: 'm47', cat: 'レア役', name: 'ピエロを累計50回引く',    t: 50,  v: s => s.clown },
   { id: 'm48', cat: 'レア役', name: 'リプレイを累計100回引く', t: 100, v: s => s.replay },
   { id: 'm49', cat: 'レア役', name: 'チェリー重複BBを経験する', t: 1, v: s => s.dupBB },
-  { id: 'm50', cat: 'レア役', name: '設定6でBBに当選する',     t: 1, v: s => s.set6bb }
+  { id: 'm50', cat: 'レア役', name: '設定6でBBに当選する',     t: 1, v: s => s.set6bb },
+  /* --- 応用系 (v3.0追加) --- */
+  { id: 'm51', cat: '応用', name: 'カスタム設定モードを初めて使う', t: 1, v: s => s.useCustom },
+  { id: 'm52', cat: '応用', name: '設定判別チャレンジに初めて挑戦する', t: 1, v: s => s.chTry },
+  { id: 'm53', cat: '応用', name: '設定判別チャレンジに正解する', t: 1, v: s => s.chWin },
+  { id: 'm54', cat: '応用', name: '判別チャレンジに累計5回正解する', t: 5, v: s => s.chWin },
+  { id: 'm55', cat: '応用', name: 'サウンドルームで曲を再生する', t: 1, v: s => s.srPlayed },
+  { id: 'm56', cat: '応用', name: 'データ表示モードを使ってみる', t: 1, v: s => s.useDataMode },
+  { id: 'm57', cat: '応用', name: 'データをエクスポートする', t: 1, v: s => s.exported },
+  { id: 'm58', cat: '応用', name: '777verのBBを最後まで完走する', t: 1, v: s => s.xComplete },
+  { id: 'm59', cat: '応用', name: 'BBセカンドゾーンに突入する', t: 1, v: s => s.xSecond },
+  { id: 'm60', cat: '応用', name: 'セカンドゾーンで336枚を達成する', t: 1, v: s => s.x336 },
+  { id: 'm61', cat: '応用', name: '隠しコマンド(?O?O)を発動させる', t: 1, v: s => s.cmdGogo },
+  { id: 'm62', cat: '応用', name: '隠しコマンド(?O?O???)でレインボーを呼ぶ', t: 1, v: s => s.cmdRare },
+  { id: 'm63', cat: '応用', name: '「現在のボーナスをスキップ」を使う', t: 1, v: s => s.usedSkip },
+  { id: 'm64', cat: '応用', name: 'Auto Modeを初めて使う', t: 1, v: s => s.useAuto },
+  { id: 'm65', cat: '応用', name: 'Auto Modeで累計1,000G消化する', t: 1000, v: s => s.autoSpins },
+  { id: 'm66', cat: '応用', name: '「I\'m FUNKY JUGGLER」を解放する', t: 1, v: s => s.xComplete },
+  { id: 'm67', cat: '応用', name: '生涯差枚 +3,000枚を超える', t: 3000, v: s => Math.max(0, s.lifeOut - s.lifeIn) },
+  { id: 'm68', cat: '応用', name: '生涯差枚 +5,000枚を超える', t: 5000, v: s => Math.max(0, s.lifeOut - s.lifeIn) },
+  { id: 'm69', cat: '応用', name: '投入1,000枚以上で出玉率120%を記録する', t: 1, v: s => s.rate120 },
+  { id: 'm70', cat: '応用', name: '投資5,000円以上で回収10,000円を達成する', t: 1, v: s => (s.investYen >= 5000 && s.kaishuYen >= 10000) ? 1 : 0 }
 ];
 
 function freshMissionStore() {
@@ -190,7 +211,10 @@ function freshMissionStore() {
       lifeIn: 0, lifeOut: 0, spins: 0, bb: 0, rb: 0, investYen: 0, kaishuYen: 0,
       jugren: 0, renMax: 0, ren50: 0, ren10: 0, bbbb: 0, rbrb: 0, ses5: 0, ses10: 0, solo: 0,
       rare: 0, verNORMAL: 0, verSP: 0, verD9: 0, verX: 0, verUNMEI: 0,
-      firstPeka: 0, latePeka: 0, dup: 0, dupBB: 0, grape: 0, bell: 0, clown: 0, replay: 0, set6bb: 0
+      firstPeka: 0, latePeka: 0, dup: 0, dupBB: 0, grape: 0, bell: 0, clown: 0, replay: 0, set6bb: 0,
+      useCustom: 0, chTry: 0, chWin: 0, srPlayed: 0, useDataMode: 0, exported: 0,
+      xComplete: 0, xSecond: 0, x336: 0, cmdGogo: 0, cmdRare: 0, usedSkip: 0,
+      useAuto: 0, autoSpins: 0, rate120: 0, funkySeen: 0
     },
     done: {}
   };
@@ -261,6 +285,7 @@ const state = {
   dataMode: false,     // データ表示モード(右パネル)
   diffLog: [],         // 差枚推移ログ [[総回転数, 差枚],...] (データリセットで初期化)
   diffBase: 0,         // 差枚グラフの基準値(データリセット時点を0とする)
+  graphMinG: 1000,     // 差枚グラフの表示基準幅(G数)。超えたら同じ刻みで自動拡張
   hadBonus: false,     // 前回ボーナスがあるか(ジャグ連判定用・データリセットで解除)
   prevBonusType: null, // 前回のボーナス種別
   renChain: 0,         // 現在の連チャン数
@@ -332,7 +357,8 @@ const BGM_FILES = {
   BBX2: './BGM/BBX2.mp3',                 // BB後半 (210〜294)
   BBHITX2: './BGM/BBhitX_2nd.mp3',        // セカンドゾーン突入
   BBX2ND: './BGM/BBX_2nd.mp3',            // セカンドゾーン中 (294〜336)
-  BBFINISHX2: './BGM/BBFinishX_2nd.mp3'   // セカンドゾーン終了
+  BBFINISHX2: './BGM/BBFinishX_2nd.mp3',  // セカンドゾーン終了
+  FUNKY: './BGM/777.mp3'                  // シークレット曲 (777ver完走で解放)
 };
 
 /* BBボーナス楽曲バージョン定義 (hit: null=BBhit1/2の50%抽選, 'NONE'=hitなし即ループ) */
@@ -1064,6 +1090,7 @@ function startGame() {
     state.counts.start++;
     state.counts.total++; // BB/RB中の回転はスタート・総回転数に含めない
     mAdd('spins');
+    if (state.autoMode) mAdd('autoSpins');
   }
 
   /* リール始動 */
@@ -1123,7 +1150,7 @@ function lightLamp() {
   state.gogoSndEnd = performance.now() + (state.seOn ? audio.duration('GOGO', 1200) : 0);
   /* 777ver: 77G目のBB当選点灯なら、GOGO音停止の1秒後から煽りループ(GOGOCHANCE_X)を再生 */
   if (!state.inBonus && state.bonusFlag === 'BB' && pickBBVersion(state.bbWinG || 0) === 'X') {
-    const wait = (state.seOn ? audio.duration('GOGO', 1200) : 0) + 1000;
+    const wait = (state.seOn ? audio.duration('GOGO', 1200) : 0) + 100; // GOGO音停止の0.1秒後
     setTimeout(() => {
       if (!state.inBonus && state.lampLit && state.bonusFlag === 'BB' && pickBBVersion(state.bbWinG || 0) === 'X') audio.playBGM('GOGOX');
     }, wait);
@@ -1220,7 +1247,6 @@ function resolveGame() {
     /* ボーナス中の進行 */
     if (state.inBonus) {
       state.bonusPaid += pay;
-      xCheckPhase(); // 777ver: 210枚でBBX2へ曲切替
       /* 777verセカンドゾーン中は336枚(=リミット322超)まで延長 */
       const limit = state.bonusType === 'BB'
         ? (state.bonusVer === 'X' && state.xMode === 2 ? 336 - 14 : BB_LIMIT)
@@ -1249,6 +1275,7 @@ function resolveGame() {
 function addPayout(n) {
   state.totalOut += n;
   mAdd('lifeOut', n);
+  if (state.totalIn >= 1000 && state.totalOut / state.totalIn >= 1.2) mSet('rate120');
   state.mochi += n; // 持ちメダルは総所持枚数
   state.credit = Math.min(CREDIT_MAX, state.credit + n);
 }
@@ -1299,7 +1326,8 @@ function drawDiffGraph() {
   let maxAbs = 500;
   for (const [, d] of log) if (Math.abs(d) > maxAbs) maxAbs = Math.abs(d);
   maxAbs = Math.ceil(maxAbs / 500) * 500;
-  const gMax = Math.max(1000, Math.ceil((log.length ? log[log.length - 1][0] : 0) / 1000) * 1000);
+  const base = state.graphMinG || 1000;
+  const gMax = Math.max(base, Math.ceil((log.length ? log[log.length - 1][0] : 0) / base) * base);
   const padL = 6, padR = 6, padT = 16, padB = 16;
   const x = g => padL + (W - padL - padR) * g / gMax;
   const y = d => padT + (H - padT - padB) * (1 - (d + maxAbs) / (2 * maxAbs));
@@ -1332,7 +1360,7 @@ function setDataMode(on) {
   state.dataMode = on;
   document.body.classList.toggle('data-mode', on);
   $('dataSide').hidden = !on;
-  if (on) renderDataPanel(true);
+  if (on) { $('graphRange').value = String(state.graphMinG || 1000); renderDataPanel(true); mSet('useDataMode'); }
   saveGame();
 }
 
@@ -1343,6 +1371,14 @@ const X_CHOREO2 = { bet: 0,    lever: 770,  s1: 1550, s2: 1930, s3: 2320, rainbo
 let xTimers = [];
 function xSchedule(fn, ms) { xTimers.push(setTimeout(fn, ms)); }
 function xClearTimers() { xTimers.forEach(clearTimeout); xTimers = []; }
+
+/* シークレット曲の解放状態: 解放済み&未閲覧ならメニュー/サウンドルームを黄色く光らせる */
+function isFunkyUnlocked() { return !!mstore.st.xComplete; }
+function updateSecretGlow() {
+  const glow = isFunkyUnlocked() && !mstore.st.funkySeen;
+  el.btnMenu.classList.toggle('glow-y', glow);
+  $('btnCatSound').classList.toggle('glow-y', glow);
+}
 
 /* レインボーランプの直接制御 (演出専用・state.lampLitには触れない) */
 function xSetRainbow(on) {
@@ -1403,9 +1439,10 @@ function xRunIntro() {
   });
 }
 
-/* 払い出し進行チェック: 210枚でBBX2へ切替 (曲の切替のみ) */
+/* COUNT表示(disp.bonus)が210になった瞬間にBBX2へ切替 (内部値ではなく表示連動) */
 function xCheckPhase() {
-  if (state.xMode === 1 && !state.x2Started && state.bonusPaid >= 210) {
+  if (state.inBonus && state.bonusType === 'BB' && state.bonusVer === 'X'
+      && state.xMode === 1 && !state.x2Started && disp.bonus >= 210) {
     state.x2Started = true;
     audio.playBGM('BBX2');
   }
@@ -1421,6 +1458,7 @@ function xEnterSecond(payoutSndMs) {
     audio.playBGMOnce('BBFINISHX', () => {
       /* BBFinishX終了と同時にセカンドゾーン!! (COUNT294は表示したまま) */
       state.xMode = 2;
+      mSet('xSecond');
       state.bbHitPlaying = true;
       state.seMuteX = true;
       xRunChoreo(X_CHOREO2);
@@ -1545,6 +1583,9 @@ function endBonus(payoutSndMs = 0) {
       state.xMode = 0;
       state.x2Started = false;
       if (wasX2) {
+        mSet('xComplete'); // 777ver完走 → 「I'm FUNKY JUGGLER」解放!
+        if (got >= 336) mSet('x336');
+        updateSecretGlow();
         /* レインボーはFinish再生開始から3.1秒後に2.5秒かけてフェードアウト */
         xSchedule(() => {
           el.gogoLamp.classList.add('x-fade');
@@ -1643,6 +1684,7 @@ function autoPress(i) {
 /* Auto ModeのON/OFF一元化 (設定チェックボックス・[A]キー共通) */
 function setAutoMode(on) {
   state.autoMode = on;
+  if (on) mSet('useAuto');
   syncAutoBtn();
   if (on) {
     closeModal();
@@ -1686,6 +1728,7 @@ function renderMedals() {
   el.wMochi.textContent = String(disp.mochi);
   el.segPayout.textContent = String(disp.payout);
   el.segBonus.textContent = (state.inBonus || state.bonusCountHold) ? String(disp.bonus) : '---';
+  xCheckPhase(); // 777ver: COUNT表示が210に達した瞬間にBBX2へ
 }
 /* 一気に反映 (貸出・精算・リセット・ロード時) */
 function syncMedalDisplay() {
@@ -1815,7 +1858,7 @@ function saveGame() {
     const data = {
       setting: state.setting, customProb: state.customProb, challenge: state.challenge, challengeStats: state.challengeStats,
       hadBonus: state.hadBonus, prevBonusType: state.prevBonusType, renChain: state.renChain, xMode: state.xMode, x2Started: state.x2Started,
-      dataMode: state.dataMode, diffLog: state.diffLog, diffBase: state.diffBase, credit: state.credit, mochi: state.mochi,
+      dataMode: state.dataMode, diffLog: state.diffLog, diffBase: state.diffBase, graphMinG: state.graphMinG, credit: state.credit, mochi: state.mochi,
       investYen: state.investYen, totalIn: state.totalIn, totalOut: state.totalOut,
       counts: state.counts, bonusFlag: state.bonusFlag,
       lampLit: state.lampLit, inBonus: state.inBonus,
@@ -1849,6 +1892,7 @@ function loadGame() {
     state.dataMode = !!d.dataMode;
     state.diffLog = Array.isArray(d.diffLog) ? d.diffLog : [];
     state.diffBase = d.diffBase || 0;
+    state.graphMinG = d.graphMinG || 1000;
     state.prevBonusType = d.prevBonusType || null;
     state.renChain = d.renChain || 0;
     state.credit = d.credit || 0;
@@ -1907,7 +1951,7 @@ function resetAll() {
     history: [], pendingHist: null, betLock: false, bbHitPlaying: false, payoutLock: false,
     bbWinG: 0, bonusVer: 'NORMAL', bonusCountHold: false, bonusCountFinal: 0,
     rareLamp: false, kaishuYen: 0, forceBonus: false, customProb: null, xMode: 0, x2Started: false, xLock: false, seMuteX: false,
-    challenge: null, challengeStats: { played: 0, correct: 0 }, dataMode: false, diffLog: [], diffBase: 0,
+    challenge: null, challengeStats: { played: 0, correct: 0 }, dataMode: false, diffLog: [], diffBase: 0, graphMinG: 1000,
     hadBonus: false, prevBonusType: null, renChain: 0,
     counts: { bb: 0, rb: 0, total: 0, start: 0 }
   });
@@ -1978,6 +2022,7 @@ function skipBonus() {
   if (state.bonusType === 'BB' && (state.bbHitPlaying || state.bonusVer === 'X')) return; // 777verは演出優先でスキップ不可
   const target = state.bonusType === 'BB' ? BB_LIMIT + 14 : RB_LIMIT + 14; // 294 / 112
   const remain = Math.max(0, target - state.bonusPaid);
+  mSet('usedSkip');
   addPayout(remain);          // メダル・累計・ミッション進捗に反映
   state.bonusPaid = target;
   syncMedalDisplay();         // カウントアップ演出なしで即時反映 (COUNTも294/112に)
@@ -2163,6 +2208,11 @@ function bindEvents() {
   function refreshDataBtn() {
     $('dataBtnState').textContent = state.dataMode ? '● 表示中 (タップでOFF)' : '';
   }
+  $('graphRange').addEventListener('change', () => {
+    state.graphMinG = Number($('graphRange').value) || 1000;
+    saveGame();
+    renderDataPanel(true);
+  });
   $('btnCatData').addEventListener('click', () => {
     setDataMode(!state.dataMode);
     refreshDataBtn();
@@ -2193,6 +2243,7 @@ function bindEvents() {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      mSet('exported');
       message('データをエクスポートしました');
     } catch (e) {
       askConfirm('エクスポートに失敗しました。', null, true);
@@ -2286,6 +2337,7 @@ function bindEvents() {
     });
     if (!ok) { askConfirm('0(無効) または 1以上の数値を入力してください。', null, true); return; }
     state.customProb = c;
+    mSet('useCustom');
     refreshSettingBtns();
     buildCustomRows();
     saveGame();
@@ -2339,6 +2391,7 @@ function bindEvents() {
         prevSetting: state.setting
       };
       state.customProb = null; // カスタム設定は解除(チャレンジ確率を優先)
+      mSet('chTry');
       refreshSettingBtns();
       refreshPekaBtn();
       refreshChallenge();
@@ -2354,7 +2407,7 @@ function bindEvents() {
         const ans = state.challenge.answerSetting;
         const hit = guess === ans;
         state.challengeStats.played++;
-        if (hit) state.challengeStats.correct++;
+        if (hit) { state.challengeStats.correct++; mAdd('chWin'); }
         endChallenge();
         askConfirm(
           hit ? `🎉 正解! この台は設定${ans}でした!`
@@ -2430,7 +2483,8 @@ function bindEvents() {
     { g: '運命ver',       key: 'BBHITUNMEI',  name: 'BB当選 (運命)' },
     { g: '運命ver',       key: 'BBUNMEI',     name: 'BB中BGM (運命)' },
     { g: '運命ver',       key: 'BBFINISHUNMEI', name: 'BB終了 (運命)' },
-    { g: 'REGULAR BONUS', key: 'RB',          name: 'RB中BGM' }
+    { g: 'REGULAR BONUS', key: 'RB',          name: 'RB中BGM' },
+    { g: 'SPECIAL',       key: 'FUNKY',       name: "I'm FUNKY JUGGLER", secret: true }
   ];
   const srAudio = new Audio();
   let srIdx = -1, srLoop = false, srVol = 0.5;
@@ -2447,13 +2501,16 @@ function bindEvents() {
     $('srSeek').disabled = srIdx < 0;
   }
   function srPlayTrack(i) {
+    if (SR_TRACKS[i].secret && !isFunkyUnlocked()) return; // 未解放曲は再生不可
     if (state.inBonus) { askConfirm('ボーナス中は再生できません。\nボーナス終了後にお楽しみください!', null, true); return; }
     audio.stopBGM(); // ゲーム側BGMと被らないように
     srIdx = (i + SR_TRACKS.length) % SR_TRACKS.length;
     srAudio.src = BGM_FILES[SR_TRACKS[srIdx].key];
+    srAudio.loop = srLoop; // ブラウザ内部ループで途切れなし
     srApplyVol();
     srAudio.currentTime = 0;
     srAudio.play().catch(() => {});
+    mSet('srPlayed');
     srRefreshList();
   }
   function srStop() {
@@ -2464,9 +2521,10 @@ function bindEvents() {
     $('srSeek').value = 0; $('srCur').textContent = '0:00'; $('srDur').textContent = '0:00';
     srRefreshList();
   }
-  /* 曲リスト生成 (グループ見出し付き) */
-  (function buildSrList() {
+  /* 曲リスト生成 (グループ見出し付き・シークレット対応・再構築可能) */
+  function buildSrList() {
     const wrap = $('srList');
+    wrap.innerHTML = '';
     let lastG = null;
     SR_TRACKS.forEach((t, i) => {
       if (t.g !== lastG) {
@@ -2478,8 +2536,12 @@ function bindEvents() {
       }
       const b = document.createElement('button');
       b.className = 'sr-track';
-      b.innerHTML = `<span class="sr-icon">▶</span><span>${t.name}</span>`;
+      const locked = t.secret && !isFunkyUnlocked();
+      b.innerHTML = `<span class="sr-icon">${locked ? '🔒' : '▶'}</span><span class="sr-name">${locked ? '???' : t.name}</span>`;
+      if (locked) b.disabled = true;
+      if (t.secret) b.id = 'srSecretTrack';
       b.addEventListener('click', () => {
+        if (t.secret && !isFunkyUnlocked()) return;
         if (i === srIdx) { /* 同じ曲は再生/一時停止トグル */
           if (srAudio.paused) srAudio.play().catch(() => {}); else srAudio.pause();
           srRefreshList();
@@ -2487,7 +2549,8 @@ function bindEvents() {
       });
       wrap.appendChild(b);
     });
-  })();
+  }
+  buildSrList();
   $('srPlay').addEventListener('click', () => {
     if (srIdx < 0) { srPlayTrack(0); return; }
     if (srAudio.paused) srAudio.play().catch(() => {}); else srAudio.pause();
@@ -2497,12 +2560,12 @@ function bindEvents() {
   $('srNext').addEventListener('click', () => { if (srIdx >= 0) srPlayTrack(srIdx + 1); });
   $('srLoop').addEventListener('click', () => {
     srLoop = !srLoop;
+    srAudio.loop = srLoop; // 再生中でも即反映 (ブラウザ内部ループ=途切れなし)
     $('srLoop').classList.toggle('on', srLoop);
   });
   srAudio.addEventListener('ended', () => {
     if (srIdx < 0) return;
-    if (srLoop) { srAudio.currentTime = 0; srAudio.play().catch(() => {}); }
-    else srPlayTrack(srIdx + 1); // 音楽プレイヤー風: 次の曲へ自動送り
+    srPlayTrack(srIdx + 1); // ループOFF時のみ発火: 次の曲へ自動送り
   });
   srAudio.addEventListener('timeupdate', () => {
     if (!isFinite(srAudio.duration) || srAudio.duration <= 0) return;
@@ -2520,8 +2583,31 @@ function bindEvents() {
   stopSoundRoom = srStop; // メニュー一括クローズ時にも曲を停止
   $('btnCatSound').addEventListener('click', () => {
     audio.ensure();
+    buildSrList();
     srRefreshList();
     $('soundOverlay').hidden = false;
+    /* 解放後の初回オープン: 一番下へ自動スクロール → ???が輝きながら曲名に変わる演出 */
+    if (isFunkyUnlocked() && !mstore.st.funkySeen) {
+      setTimeout(() => {
+        const listEl = $('srList');
+        try { listEl.scrollTo({ top: listEl.scrollHeight, behavior: 'smooth' }); } catch (e) { listEl.scrollTop = listEl.scrollHeight; }
+        const btn = $('srSecretTrack');
+        if (!btn) return;
+        setTimeout(() => {
+          btn.classList.add('sr-reveal');
+          setTimeout(() => {
+            btn.querySelector('.sr-name').textContent = "I'm FUNKY JUGGLER";
+            btn.querySelector('.sr-icon').textContent = '▶';
+            btn.disabled = false;
+          }, 900);
+          setTimeout(() => {
+            mstore.st.funkySeen = 1;
+            saveMissions();
+            updateSecretGlow(); // 解放確認済み → 黄色グローを消す
+          }, 2400);
+        }, 550);
+      }, 250);
+    }
   });
   $('btnCloseSound').addEventListener('click', () => { srStop(); $('soundOverlay').hidden = true; });
   $('soundOverlay').addEventListener('click', e => { if (e.target === $('soundOverlay')) { srStop(); $('soundOverlay').hidden = true; } });
@@ -2599,6 +2685,7 @@ function init() {
   layoutReels();
   buildGraph();
   bindEvents();
+  updateSecretGlow(); // シークレット曲の解放グロー反映
   if (state.dataMode) setDataMode(true); // データ表示モードの復元(リロード後)
 
   if (state.inBonus) {

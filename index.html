@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>アイムジャグラーEX (6号機) v2.0</title>
+<title>アイムジャグラーEX (6号機) v3.0</title>
 <link rel="icon" type="image/png" href="./icon/gogo.png">
 <link rel="apple-touch-icon" href="./icon/gogo.png">
 <meta name="theme-color" content="#101014">
@@ -16,7 +16,7 @@
   <header id="dataPanel">
     <div class="dp-top">
       <span class="dp-unit">0001番台</span>
-      <span class="dp-name">アイムジャグラーEX (6号機) v2.0</span>
+      <span class="dp-name">アイムジャグラーEX (6号機) v3.0</span>
       <button class="dp-auto" id="dpAuto">Auto Mode</button>
       <button class="dp-vol" id="btnVolPop">♪</button>
     </div>
@@ -382,7 +382,16 @@
 <!-- ▼ データ表示パネル (データ表示モード) ▼ -->
 <aside id="dataSide" hidden>
   <div class="ds-card">
-    <h3 class="ds-title">差枚推移</h3>
+    <div class="ds-title-row">
+      <h3 class="ds-title">差枚推移</h3>
+      <select id="graphRange" title="表示レンジ(G数)">
+        <option value="100">100G</option>
+        <option value="200">200G</option>
+        <option value="300">300G</option>
+        <option value="500">500G</option>
+        <option value="1000" selected>1000G</option>
+      </select>
+    </div>
     <canvas id="diffGraph" width="440" height="280"></canvas>
   </div>
   <div class="ds-card">
