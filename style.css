@@ -459,6 +459,29 @@ html, body {
 .io-btns .gold-btn { flex: 1; margin: 0; }
 .io-btns .gold-btn small { display: block; font-size: 9px; font-weight: normal; margin-top: 2px; }
 
+/* ================= データ表示モード ================= */
+body.data-mode { display: flex; justify-content: center; align-items: flex-start; flex-wrap: wrap; gap: 4px; }
+body.data-mode #app { flex: 0 1 440px; margin: 0; }
+#dataSide { flex: 0 1 440px; max-width: 440px; width: 100%; padding: 6px 6px 12px; display: flex; flex-direction: column; gap: 10px; }
+#dataSide[hidden] { display: none; }
+.ds-card {
+  background: #050507; border: 2px solid #2a2a33; border-radius: 10px; padding: 10px 12px;
+}
+.ds-title { font-size: 11px; color: var(--gold); letter-spacing: 2px; font-weight: bold; margin-bottom: 8px; }
+#diffGraph { width: 100%; display: block; }
+.ds-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ds-item {
+  background: #000; border: 1px solid #222; border-radius: 6px; padding: 6px 8px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.ds-label { font-size: 9px; color: #99a; font-weight: bold; }
+.ds-num {
+  font-family: "DSEG7Modern", "Courier New", monospace; font-weight: bold;
+  font-size: 15px; color: var(--seg-green); text-shadow: 0 0 6px rgba(53,255,110,.7); white-space: nowrap;
+}
+.ds-num.small { font-family: inherit; font-size: 12px; }
+.ds-num.minus { color: var(--seg-red); text-shadow: 0 0 6px rgba(255,59,59,.8); }
+
 /* ================= リセットポップアップ ================= */
 .menu-btn.danger-menu { border-color: #7a3a42; color: #ff9a9a; }
 .reset-list { display: flex; flex-direction: column; gap: 10px; }

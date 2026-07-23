@@ -258,6 +258,9 @@ const state = {
   customProb: null,    // カスタム設定モード {bb,rb,grape,replay,cherry,bell,clown} 分母値。nullで通常設定
   challenge: null,     // 設定判別チャレンジ {active:true, answerSetting:1-6, prevSetting} nullで未挑戦
   challengeStats: { played: 0, correct: 0 }, // 判別チャレンジ通算成績
+  dataMode: false,     // データ表示モード(右パネル)
+  diffLog: [],         // 差枚推移ログ [[総回転数, 差枚],...] (データリセットで初期化)
+  diffBase: 0,         // 差枚グラフの基準値(データリセット時点を0とする)
   hadBonus: false,     // 前回ボーナスがあるか(ジャグ連判定用・データリセットで解除)
   prevBonusType: null, // 前回のボーナス種別
   renChain: 0,         // 現在の連チャン数
@@ -1225,6 +1228,89 @@ function addPayout(n) {
   state.credit = Math.min(CREDIT_MAX, state.credit + n);
 }
 
+/* ================= データ表示モード (差枚グラフ+実戦データ) ================= */
+function logDiff() {
+  const d = state.totalOut - state.totalIn - state.diffBase;
+  const g = state.counts.total;
+  const log = state.diffLog;
+  if (log.length && log[log.length - 1][0] === g) log[log.length - 1][1] = d; // 同一G(ボーナス中含む)は上書き
+  else log.push([g, d]);
+  if (log.length > 2400) state.diffLog = log.filter((_, i) => i % 2 === 0 || i === log.length - 1); // 間引き
+}
+let dsLastDraw = 0;
+function renderDataPanel(force) {
+  if (!state.dataMode) return;
+  const now = performance.now();
+  if (!force && now - dsLastDraw < 400) return; // 描画スロットリング
+  dsLastDraw = now;
+  try {
+    const c = state.counts;
+    $('dsBB').textContent = c.bb > 0 ? '1/' + (c.total / c.bb).toFixed(1) : '1/---';
+    $('dsRB').textContent = c.rb > 0 ? '1/' + (c.total / c.rb).toFixed(1) : '1/---';
+    $('dsRate').textContent = state.totalIn > 0 ? (state.totalOut / state.totalIn * 100).toFixed(1) + '%' : '---%';
+    const b = c.bb + c.rb;
+    $('dsAvgG').textContent = b > 0 ? Math.round(c.total / b) + 'G' : '---';
+    const diff = state.totalOut - state.totalIn - state.diffBase;
+    const dEl = $('dsDiff');
+    dEl.textContent = (diff >= 0 ? '+' : '') + diff;
+    dEl.classList.toggle('minus', diff < 0);
+    $('dsSetting').textContent = (state.challenge && state.challenge.active) ? '??? (判別中)'
+      : state.customProb ? 'カスタム' : '設定' + state.setting;
+    $('dsMission').textContent = Object.keys(mstore.done).length + '/' + MISSIONS.length;
+    const cs = state.challengeStats;
+    $('dsChallenge').textContent = cs.played > 0 ? `${cs.correct}/${cs.played} (${Math.round(cs.correct / cs.played * 100)}%)` : '未挑戦';
+    drawDiffGraph();
+  } catch (e) {}
+}
+function drawDiffGraph() {
+  const cv = $('diffGraph');
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0a0a0d';
+  ctx.fillRect(0, 0, W, H);
+  const log = state.diffLog;
+  /* レンジ自動調整 */
+  let maxAbs = 500;
+  for (const [, d] of log) if (Math.abs(d) > maxAbs) maxAbs = Math.abs(d);
+  maxAbs = Math.ceil(maxAbs / 500) * 500;
+  const gMax = Math.max(1000, Math.ceil((log.length ? log[log.length - 1][0] : 0) / 1000) * 1000);
+  const padL = 6, padR = 6, padT = 16, padB = 16;
+  const x = g => padL + (W - padL - padR) * g / gMax;
+  const y = d => padT + (H - padT - padB) * (1 - (d + maxAbs) / (2 * maxAbs));
+  /* グリッド */
+  ctx.strokeStyle = '#22222a'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const gy = padT + (H - padT - padB) * i / 4;
+    ctx.beginPath(); ctx.moveTo(padL, gy); ctx.lineTo(W - padR, gy); ctx.stroke();
+  }
+  /* ゼロライン */
+  ctx.strokeStyle = '#55555f'; ctx.beginPath(); ctx.moveTo(padL, y(0)); ctx.lineTo(W - padR, y(0)); ctx.stroke();
+  /* ラベル */
+  ctx.fillStyle = '#889'; ctx.font = 'bold 11px sans-serif';
+  ctx.textAlign = 'left'; ctx.fillText('+' + maxAbs, padL + 2, padT - 4 + 10);
+  ctx.fillText('-' + maxAbs, padL + 2, H - 4);
+  ctx.fillText('0', padL + 2, y(0) + 12);
+  ctx.textAlign = 'right'; ctx.fillText(String(gMax), W - padR - 2, y(0) + 12);
+  /* 折れ線 */
+  if (log.length) {
+    ctx.strokeStyle = '#35ff6e'; ctx.lineWidth = 1.6;
+    ctx.shadowColor = 'rgba(53,255,110,.5)'; ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.moveTo(x(0), y(0));
+    for (const [g, d] of log) ctx.lineTo(x(g), y(d));
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+}
+function setDataMode(on) {
+  state.dataMode = on;
+  document.body.classList.toggle('data-mode', on);
+  $('dataSide').hidden = !on;
+  if (on) renderDataPanel(true);
+  saveGame();
+}
+
 /* --- BB/RB当選中カウンター点滅 (表示0.5秒→非表示0.5秒ループ) --- */
 function setBonusBlink(type, on) {
   (type === 'BB' ? el.dpBB : el.dpRB).classList.toggle('bonus-blink', on);
@@ -1492,6 +1578,8 @@ function updateUI() {
   el.dpRB.textContent = String(state.counts.rb);
   el.dpStart.textContent = String(state.counts.start);
   el.dpTotal.textContent = String(state.counts.total);
+  logDiff();
+  renderDataPanel();
   syncAutoBtn();
   const bonusTotal = state.counts.bb + state.counts.rb;
   el.dpGosei.textContent = bonusTotal > 0 ? '1/' + (state.counts.total / bonusTotal).toFixed(1) : '1/---';
@@ -1579,7 +1667,8 @@ function saveGame() {
   try {
     const data = {
       setting: state.setting, customProb: state.customProb, challenge: state.challenge, challengeStats: state.challengeStats,
-      hadBonus: state.hadBonus, prevBonusType: state.prevBonusType, renChain: state.renChain, credit: state.credit, mochi: state.mochi,
+      hadBonus: state.hadBonus, prevBonusType: state.prevBonusType, renChain: state.renChain,
+      dataMode: state.dataMode, diffLog: state.diffLog, diffBase: state.diffBase, credit: state.credit, mochi: state.mochi,
       investYen: state.investYen, totalIn: state.totalIn, totalOut: state.totalOut,
       counts: state.counts, bonusFlag: state.bonusFlag,
       lampLit: state.lampLit, inBonus: state.inBonus,
@@ -1608,6 +1697,9 @@ function loadGame() {
       ? { played: d.challengeStats.played || 0, correct: d.challengeStats.correct || 0 }
       : { played: 0, correct: 0 };
     state.hadBonus = !!d.hadBonus;
+    state.dataMode = !!d.dataMode;
+    state.diffLog = Array.isArray(d.diffLog) ? d.diffLog : [];
+    state.diffBase = d.diffBase || 0;
     state.prevBonusType = d.prevBonusType || null;
     state.renChain = d.renChain || 0;
     state.credit = d.credit || 0;
@@ -1649,6 +1741,8 @@ function resetData() {
   state.hadBonus = false;   // 連チャン判定もリセット(リセット直後の誤ジャグ連防止)
   state.prevBonusType = null;
   state.renChain = 0;
+  state.diffLog = [];       // 差枚推移グラフもリセット
+  state.diffBase = state.totalOut - state.totalIn; // ここを差枚0の基準に
   renderGraph();
   message('データをリセットしました');
   saveGame();
@@ -1664,7 +1758,7 @@ function resetAll() {
     history: [], pendingHist: null, betLock: false, bbHitPlaying: false, payoutLock: false,
     bbWinG: 0, bonusVer: 'NORMAL', bonusCountHold: false, bonusCountFinal: 0,
     rareLamp: false, kaishuYen: 0, forceBonus: false, customProb: null,
-    challenge: null, challengeStats: { played: 0, correct: 0 },
+    challenge: null, challengeStats: { played: 0, correct: 0 }, dataMode: false, diffLog: [], diffBase: 0,
     hadBonus: false, prevBonusType: null, renChain: 0,
     counts: { bb: 0, rb: 0, total: 0, start: 0 }
   });
@@ -1909,6 +2003,17 @@ function bindEvents() {
   });
   $('btnCloseMachine').addEventListener('click', () => { $('machineOverlay').hidden = true; });
   $('machineOverlay').addEventListener('click', e => { if (e.target === $('machineOverlay')) $('machineOverlay').hidden = true; });
+  /* --- データ表示モード --- */
+  function refreshDataBtn() {
+    $('dataBtnState').textContent = state.dataMode ? '● 表示中 (タップでOFF)' : '';
+  }
+  $('btnCatData').addEventListener('click', () => {
+    setDataMode(!state.dataMode);
+    refreshDataBtn();
+    if (state.dataMode) { closeModal(); message('データ表示モード ON'); }
+    else message('データ表示モード OFF');
+  });
+  refreshDataBtn();
   $('btnCatSystem').addEventListener('click', () => {
     el.chkMsgBar.checked = state.msgBarOn;
     syncSoundControls();
@@ -2324,6 +2429,7 @@ function init() {
   layoutReels();
   buildGraph();
   bindEvents();
+  if (state.dataMode) setDataMode(true); // データ表示モードの復元(リロード後)
 
   if (state.inBonus) {
     const limit = state.bonusType === 'BB' ? BB_LIMIT : RB_LIMIT;

@@ -156,6 +156,7 @@
         <button class="menu-btn" id="btnCatSound">サウンドルーム</button>
         <button class="menu-btn" id="btnPayList">小役一覧</button>
         <button class="menu-btn" id="btnCatMachine">台設定</button>
+        <button class="menu-btn" id="btnCatData">データ表示モード (PC推奨)<small id="dataBtnState"></small></button>
         <button class="menu-btn" id="btnCatSystem">システム設定</button>
         <button class="menu-btn danger-menu" id="btnCatReset">リセット</button>
       </div>
@@ -369,6 +370,27 @@
   </div>
 
 </div>
+
+<!-- ▼ データ表示パネル (データ表示モード) ▼ -->
+<aside id="dataSide" hidden>
+  <div class="ds-card">
+    <h3 class="ds-title">差枚推移</h3>
+    <canvas id="diffGraph" width="440" height="280"></canvas>
+  </div>
+  <div class="ds-card">
+    <h3 class="ds-title">実戦データ</h3>
+    <div class="ds-grid">
+      <div class="ds-item"><span class="ds-label">BB確率(実測)</span><span class="ds-num" id="dsBB">1/---</span></div>
+      <div class="ds-item"><span class="ds-label">RB確率(実測)</span><span class="ds-num" id="dsRB">1/---</span></div>
+      <div class="ds-item"><span class="ds-label">出玉率</span><span class="ds-num" id="dsRate">---%</span></div>
+      <div class="ds-item"><span class="ds-label">ボーナス平均G</span><span class="ds-num" id="dsAvgG">---</span></div>
+      <div class="ds-item"><span class="ds-label">現在差枚</span><span class="ds-num" id="dsDiff">+0</span></div>
+      <div class="ds-item"><span class="ds-label">設定状態</span><span class="ds-num small" id="dsSetting">設定1</span></div>
+      <div class="ds-item"><span class="ds-label">ミッション達成</span><span class="ds-num small" id="dsMission">0/50</span></div>
+      <div class="ds-item"><span class="ds-label">判別チャレンジ</span><span class="ds-num small" id="dsChallenge">-</span></div>
+    </div>
+  </div>
+</aside>
 
 <script src="./script.js"></script>
 </body>
