@@ -156,7 +156,6 @@
         <button class="menu-btn" id="btnCatSound">サウンドルーム</button>
         <button class="menu-btn" id="btnPayList">小役一覧</button>
         <button class="menu-btn" id="btnCatMachine">台設定</button>
-        <button class="menu-btn" id="btnCatData">データ表示モード (PC推奨)<small id="dataBtnState"></small></button>
         <button class="menu-btn" id="btnCatSystem">システム設定</button>
         <button class="menu-btn danger-menu" id="btnCatReset">リセット</button>
       </div>
@@ -189,6 +188,11 @@
           <button class="speed-btn" data-v="1">×1.0</button>
         </div>
         <button class="gold-btn" id="btnForcePeka">次ゲームでGOGO!確定 (1回)</button>
+        <div class="startg-row">
+          <span>スタートG数<small>(777ver検証用)</small></span>
+          <input type="number" id="inStartG" min="0" max="9999" step="1" value="0">
+          <button id="btnSetStartG">適用</button>
+        </div>
         <button class="gold-btn" id="btnSkipBonus" disabled>現在のボーナスをスキップ</button>
         <button class="menu-btn" id="btnCustomProb">カスタム設定モード</button>
       </div>
@@ -219,6 +223,10 @@
           <input type="checkbox" id="chkSe2" checked>
         </label>
         <div class="vol-row"><span>SE音量</span><input type="range" id="volSe2" min="0" max="100" value="35"></div>
+      </div>
+      <div class="modal-section">
+        <h3>表示モード</h3>
+        <button class="menu-btn" id="btnCatData">データ表示モード (PC推奨)<small id="dataBtnState"></small></button>
       </div>
       <div class="modal-section">
         <h3>データ管理</h3>

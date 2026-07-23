@@ -459,6 +459,23 @@ html, body {
 .io-btns .gold-btn { flex: 1; margin: 0; }
 .io-btns .gold-btn small { display: block; font-size: 9px; font-weight: normal; margin-top: 2px; }
 
+/* 777ver: レインボーフェードアウト */
+#gogoLamp.x-fade #gogoImgOn, #gogoLamp.x-fade #gogoImgRainbow { transition: opacity 2.5s linear; opacity: 0; }
+
+/* 台設定: スタートG数編集 */
+.startg-row { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
+.startg-row > span { flex: 1; font-size: 12px; color: #ddd; font-weight: bold; }
+.startg-row small { display: block; font-size: 9px; color: #99a; font-weight: normal; }
+.startg-row input {
+  width: 70px; padding: 6px 8px; text-align: right;
+  background: #0d0d11; color: var(--seg-green); border: 1px solid #444; border-radius: 6px;
+  font-family: "Courier New", monospace; font-size: 13px; font-weight: bold;
+}
+.startg-row button {
+  padding: 7px 12px; border-radius: 6px; font-size: 12px; font-weight: bold;
+  background: linear-gradient(180deg, #4a4a55, #2a2a32); color: #fff; border: 1px solid #666;
+}
+
 /* ================= データ表示モード ================= */
 body.data-mode { display: flex; justify-content: center; align-items: flex-start; flex-wrap: wrap; gap: 4px; }
 body.data-mode #app { flex: 0 1 440px; margin: 0; }
