@@ -1429,12 +1429,18 @@ function xRunIntro() {
   state.xLock = true;
   refreshSkipBtn();
   xRunChoreo(X_CHOREO1);
+  /* ロック解除は「音声終了」と「疑似リプレイ演出完了」の両方が揃ってから
+     (BGM OFF時は音声が即完了扱いになるため、演出タイマー側でも確実に押さえる) */
+  let done1 = 0;
+  const unlock1 = () => { if (++done1 === 2) { state.xLock = false; state.seMuteX = false; refreshSkipBtn(); updateUI(); } };
+  xSchedule(unlock1, X_CHOREO1.rainbow + 150);
   audio.playBGMOnce('BBHITX', () => {
     state.bbHitPlaying = false;
-    state.seMuteX = false;
-    state.xLock = false;
-    refreshSkipBtn();
-    if (state.inBonus && state.bonusType === 'BB') audio.playBGM('BBX1');
+    if (state.inBonus && state.bonusType === 'BB') {
+      audio.playBGM('BBX1');
+      el.topBanner.classList.add('x-rainbow'); // BIG CHANCEバナー虹色 (BBX1〜BBX2の間)
+    }
+    unlock1();
     updateUI();
   });
 }
@@ -1455,6 +1461,7 @@ function xEnterSecond(payoutSndMs) {
   setTimeout(() => {
     audio.stopBGM();      // BBX2即停止
     xSetRainbow(false);   // レインボー一旦消灯
+    el.topBanner.classList.remove('x-rainbow'); // バナー虹色OFF (Finish〜hit_2nd中は通常表示)
     audio.playBGMOnce('BBFINISHX', () => {
       /* BBFinishX終了と同時にセカンドゾーン!! (COUNT294は表示したまま) */
       state.xMode = 2;
@@ -1462,12 +1469,17 @@ function xEnterSecond(payoutSndMs) {
       state.bbHitPlaying = true;
       state.seMuteX = true;
       xRunChoreo(X_CHOREO2);
+      /* こちらもロック解除は「音声終了 AND 演出完了」の両方が揃ってから */
+      let done2 = 0;
+      const unlock2 = () => { if (++done2 === 2) { state.xLock = false; state.seMuteX = false; refreshSkipBtn(); updateUI(); } };
+      xSchedule(unlock2, X_CHOREO2.rainbow + 150);
       audio.playBGMOnce('BBHITX2', () => {
         state.bbHitPlaying = false;
-        state.seMuteX = false;
-        state.xLock = false;
-        refreshSkipBtn();
-        if (state.inBonus && state.bonusType === 'BB') audio.playBGM('BBX2ND');
+        if (state.inBonus && state.bonusType === 'BB') {
+          audio.playBGM('BBX2ND');
+          el.topBanner.classList.add('x-rainbow'); // バナー虹色 (BBX_2ndの間)
+        }
+        unlock2();
         updateUI();
       });
     });
@@ -1559,7 +1571,7 @@ function endBonus(payoutSndMs = 0) {
     if (state.history.length > 9) state.history.length = 9;
     state.pendingHist = null;
   }
-  el.topBanner.classList.remove('bonus-flash');
+  el.topBanner.classList.remove('bonus-flash', 'x-rainbow');
   message(`${type === 'BB' ? 'BIG' : 'REGULAR'} BONUS 終了! ${got}枚獲得!`);
   const hideCount = () => {
     state.bonusCountHold = false;
@@ -1957,7 +1969,7 @@ function resetAll() {
   });
   audio.stopBGM();
   unlightLamp();
-  el.topBanner.classList.remove('bonus-flash');
+  el.topBanner.classList.remove('bonus-flash', 'x-rainbow');
   clearBonusBlink();
   xClearTimers();
   xSetRainbow(false);

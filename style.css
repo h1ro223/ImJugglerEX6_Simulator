@@ -476,6 +476,10 @@ html, body {
   background: linear-gradient(180deg, #4a4a55, #2a2a32); color: #fff; border: 1px solid #666;
 }
 
+/* 777ver: BIG CHANCEバナー虹色 (背景も文字もまとめて色相回転) */
+@keyframes bannerRainbow { from { filter: hue-rotate(0deg) brightness(1.15); } to { filter: hue-rotate(360deg) brightness(1.15); } }
+#topBanner.x-rainbow { animation: bannerRainbow 1.4s linear infinite; }
+
 /* シークレット曲解放のお知らせグロー (黄色ブラー) */
 @keyframes glowY {
   0%, 100% { box-shadow: 0 0 6px 2px rgba(245,197,66,.55); }
