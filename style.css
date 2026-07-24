@@ -476,6 +476,15 @@ html, body {
   background: linear-gradient(180deg, #4a4a55, #2a2a32); color: #fff; border: 1px solid #666;
 }
 
+/* 777ver: スタートG数のゆっくり点滅 (フェード) */
+@keyframes xBlink { 0%, 100% { opacity: 1; } 50% { opacity: .12; } }
+.x-blink { animation: xBlink 1.6s ease-in-out infinite; }
+
+/* 777ver: 疑似リプレイ中の暗転 (中段リール帯だけくり抜き) */
+#xDimOverlay { position: fixed; inset: 0; z-index: 45; pointer-events: none; }
+#xDimOverlay[hidden] { display: none; }
+#xDimHole { position: fixed; box-shadow: 0 0 0 200vmax rgba(0,0,0,.75); border-radius: 4px; }
+
 /* 777ver: BIG CHANCEバナー虹色 (背景も文字もまとめて色相回転) */
 @keyframes bannerRainbow { from { filter: hue-rotate(0deg) brightness(1.15); } to { filter: hue-rotate(360deg) brightness(1.15); } }
 #topBanner.x-rainbow { animation: bannerRainbow 1.4s linear infinite; }

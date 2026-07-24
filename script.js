@@ -101,7 +101,7 @@ const REV_MS     = 780;    // 1回転にかかる時間(ms) 約77rpm
 const SPEED      = KOMA / REV_MS;  // コマ/ms
 const curSpeed   = () => SPEED * state.reelSpeed; // リール回転速度倍率を適用
 const DECEL_KOMA = 1.05;   // (旧減速演出用・現在は未使用。ガチッと即停止に変更済み)
-const WAIT_MS    = 4100;   // ゲーム間ウェイト(実機は4.1秒規定 4100　現在は1.5秒 1500)
+const WAIT_MS    = 1500;   // ゲーム間ウェイト(実機は4.1秒規定 4100　現在は1.5秒 1500)
 /* 隠しコマンド (PC限定・サイレント発動)
    待機中に G,O,G,O → 次プレイでペカ確定(通常) / G,O,G,O,7,7,7 → レインボー(中段チェリーBB)確定
    点灯タイミングはいつも通り先ペカ15%/後ペカ85%の抽選 */
@@ -1152,7 +1152,10 @@ function lightLamp() {
   if (!state.inBonus && state.bonusFlag === 'BB' && pickBBVersion(state.bbWinG || 0) === 'X') {
     const wait = (state.seOn ? audio.duration('GOGO', 1200) : 0) + 100; // GOGO音停止の0.1秒後
     setTimeout(() => {
-      if (!state.inBonus && state.lampLit && state.bonusFlag === 'BB' && pickBBVersion(state.bbWinG || 0) === 'X') audio.playBGM('GOGOX');
+      if (!state.inBonus && state.lampLit && state.bonusFlag === 'BB' && pickBBVersion(state.bbWinG || 0) === 'X') {
+        audio.playBGM('GOGOX');
+        el.dpStart.classList.add('x-blink'); // 777verの合図: スタートG数がゆっくり点滅
+      }
     }, wait);
   }
   refreshPekaBtn(); // モーダルを開いたままでもボタン表示を追従
@@ -1165,6 +1168,7 @@ function unlightLamp() {
   el.gogoImgOn.hidden = true;
   el.gogoLamp.classList.remove('lit', 'rainbow');
   $('gogoImgRainbow').hidden = true;
+  el.dpStart.classList.remove('x-blink');
   refreshPekaBtn();
 }
 
@@ -1411,7 +1415,26 @@ function xFakeStop(i) {
   btn.classList.add('pushed');
   setTimeout(() => btn.classList.remove('pushed'), 180);
 }
+/* 疑似リプレイ中の暗転: 画面全体を黒75%で覆い、中段リールの帯だけくり抜く */
+function xDim(on) {
+  const d = $('xDimOverlay');
+  d.hidden = !on;
+  if (on) {
+    try {
+      const r = $('reelWindow').getBoundingClientRect();
+      const cellH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cellH')) || (r.height / 3);
+      const hole = $('xDimHole');
+      hole.style.top = (r.top + (r.height - cellH) / 2) + 'px';
+      hole.style.left = (r.left - 4) + 'px';
+      hole.style.width = (r.width + 8) + 'px';
+      hole.style.height = cellH + 'px';
+    } catch (e) {}
+  }
+}
+
 function xRunChoreo(t) {
+  xSchedule(() => xDim(true), t.bet);      // 1BETと同時に暗転
+  xSchedule(() => xDim(false), t.rainbow); // レインボー点灯と同時に解除
   xSchedule(() => xFakeBet(), t.bet);
   xSchedule(() => xFakeLever(), t.lever);
   [t.s1, t.s2, t.s3].forEach((ms, i) => xSchedule(() => xFakeStop(i), ms));
@@ -1422,6 +1445,7 @@ function xRunChoreo(t) {
 /* BB突入 (777が揃った瞬間): GOGOX即停止+消灯 → BBhitXと疑似リプレイ演出 */
 function xRunIntro() {
   audio.stopBGM();       // GOGOCHANCE_X煽りループを即停止
+  el.dpStart.classList.remove('x-blink'); // 777揃い → スタートG点滅終了
   state.xMode = 1;
   state.x2Started = false;
   state.bbHitPlaying = true;
@@ -1708,8 +1732,7 @@ function setAutoMode(on) {
   }
 }
 function syncAutoBtn() {
-  el.dpAuto.classList.toggle('on', state.autoMode);
-  el.dpAuto.textContent = state.autoMode ? 'AUTO PLAY中' : 'Auto Mode';
+  el.dpAuto.classList.toggle('on', state.autoMode); // ON時は緑発光のみ・表示は常にAuto Mode
 }
 
 function autoNextGame(delayMs) {
@@ -1796,7 +1819,7 @@ function updateUI() {
   el.btnMaxBet.disabled = betLocked || state.bet >= 3;
   el.btnRent.disabled = !idle;
   el.btnPayback.disabled = !idle || state.bet > 0 || state.mochi <= 0;
-  el.lever.classList.toggle('disabled', !idle);
+  el.lever.classList.toggle('disabled', !idle || state.xLock);
 
   // ストップボタン
   el.stopBtns.forEach((btn, i) => {
@@ -1972,6 +1995,7 @@ function resetAll() {
   el.topBanner.classList.remove('bonus-flash', 'x-rainbow');
   clearBonusBlink();
   xClearTimers();
+  xDim(false);
   xSetRainbow(false);
   el.gogoLamp.classList.remove('x-fade');
   reels.forEach(r => { r.onStopCb = null; });
