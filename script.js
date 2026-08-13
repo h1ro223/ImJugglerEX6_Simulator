@@ -101,7 +101,7 @@ const REV_MS     = 780;    // 1回転にかかる時間(ms) 約77rpm
 const SPEED      = KOMA / REV_MS;  // コマ/ms
 const curSpeed   = () => SPEED * state.reelSpeed; // リール回転速度倍率を適用
 const DECEL_KOMA = 1.05;   // (旧減速演出用・現在は未使用。ガチッと即停止に変更済み)
-const WAIT_MS    = 4100;   // ゲーム間ウェイト(実機は4.1秒規定 4100　現在は4.1秒 4100)
+const WAIT_MS    = 1500;   // ゲーム間ウェイト(実機は4.1秒規定 4100　現在は1.5秒 1500)
 /* 隠しコマンド (PC限定・サイレント発動)
    待機中に G,O,G,O → 次プレイでペカ確定(通常) / G,O,G,O,7,7,7 → レインボー(中段チェリーBB)確定
    点灯タイミングはいつも通り先ペカ15%/後ペカ85%の抽選 */
@@ -324,6 +324,7 @@ const state = {
   seMuteX: false,      // 777ver hit曲再生中のSEミュート(曲内にSEが含まれるため)
   payoutLock: false,   // Get系mp3再生中は操作不可(音被り防止)
   rareLamp: false,     // 中段チェリー契機ボーナス(レインボー点灯)
+  dupCherry: false,    // このゲームのチェリーがボーナス重複契機か(単チェリー制御用)
   history: [],         // ボーナス履歴グラフ {g, t} 新しい順・最大9件
   pendingHist: null,   // 進行中ボーナスの履歴 {g, t}
   kaishuYen: 0,        // 回収額(精算で円に変換した合計)
@@ -597,6 +598,34 @@ function payoutFor(wins, bet) {
   return Math.min(total, PAY_CAP);
 }
 
+/* ================= 単チェリー判定 =================
+   実機の「単チェリー」= 順押し(左→中→右)で左リールにチェリーが露出しているのに、
+   中リールの真横・斜め(上下1コマ)にチェリーが繋がっていない停止形。
+   ジャグラーではこの形が出た時点でボーナス成立が確定するため、本シミュレーターでは
+     ・重複当選時 (state.dupCherry === true)  → 中リールを「繋がらない形」に制御し、第3停止離しで必ず点灯
+     ・非重複のチェリー時 (state.dupCherry === false) → 中リールを「必ず繋がる形」に制御し、単チェリーを出さない
+   の両方向で整合を取っている。 */
+function cherryRows(col) {
+  const rows = [];
+  if (!col) return rows;
+  for (let r = 0; r < 3; r++) if (col[r] === SYM.CHERRY) rows.push(r);
+  return rows;
+}
+/* 中リールが、左リールのチェリーの真横または斜め(上下1コマ)にチェリーを持つか */
+function centerCherryLinked(col0, col1) {
+  if (!col0 || !col1) return false;
+  const c0 = cherryRows(col0), c1 = cherryRows(col1);
+  return c0.some(r => c1.some(r2 => Math.abs(r2 - r) <= 1));
+}
+/* 単チェリー成立形か (順押し限定・左にチェリー露出・中リールに繋がるチェリー無し) */
+function isSoloCherry(cols, order) {
+  if (!cols || !cols[0] || !cols[1]) return false;
+  if (!order || order.length !== 3) return false;
+  if (!(order[0] === 0 && order[1] === 1 && order[2] === 2)) return false; // 順押し以外は判定対象外
+  if (!cols[0].includes(SYM.CHERRY)) return false;
+  return !centerCherryLinked(cols[0], cols[1]);
+}
+
 /* ================= 停止制御 (最大4コマ引き込み + 蹴飛ばし) ================= */
 
 /* 指定リールで「図柄symを行rowに置ける停止位置」の一覧 (チェリー蹴飛ばし考慮) */
@@ -662,6 +691,14 @@ function chooseStopPosition(reelIdx, curPos) {
 
     /* 第1・第2停止: 非成立チェリーの蹴飛ばし + フラグ達成可能ライン数を最大化 */
     let penalty = 0;
+    /* --- 単チェリー制御 (順押しの第2停止=中リールのみ) ---
+       重複当選なら「繋がらない形(=単チェリー)」、非重複なら「繋がる形」を優先させる。
+       ※pressOrderには今回の押下がまだ積まれていないため、順押し第2停止は length===1 && [0]===0 */
+    if (reelIdx === 1 && cols[0] && cols[0].includes(SYM.CHERRY) &&
+        state.pressOrder.length === 1 && state.pressOrder[0] === 0 &&
+        (state.smallFlag === 'CHERRY' || state.smallFlag === 'RARECHERRY')) {
+      if (centerCherryLinked(cols[0], col) === !!state.dupCherry) penalty += 40; // 望ましくない停止形
+    }
     if (!allowed.has('CHERRY') && cols[0]) {
       // チェリーは左リールのみで成立が確定するため、左停止時点で必ず回避する
       if (cols[0].includes(SYM.CHERRY)) penalty = 500;
@@ -1001,6 +1038,7 @@ function startGame() {
   /* --- 抽選 --- */
   if (state.inBonus) {
     state.smallFlag = 'GRAPE'; // ボーナス中は毎ゲームブドウ
+    state.dupCherry = false;
   } else {
     const sp = getProbs(); // カスタム設定モード適用中はカスタム確率
     let newBonus = false, rareHit = false, dupCherry = false;
@@ -1050,6 +1088,8 @@ function startGame() {
       else if (r2 < (acc += sp.bell)) { state.smallFlag = 'BELL'; mAdd('bell'); }
       else if (r2 < (acc += sp.clown)) { state.smallFlag = 'CLOWN'; mAdd('clown'); }
     }
+    /* このゲームのチェリーがボーナス重複契機か(単チェリーの停止形制御に使用) */
+    state.dupCherry = !!(dupCherry || rareHit);
 
     /* 新規当選時の処理 (揃えるまで数ゲーム持ち越しても当選G基準) */
     if (!hadFlag && state.bonusFlag) {
@@ -1130,9 +1170,16 @@ function releaseStopVisual() {
   el.stopBtns.forEach(b => b.classList.remove('pushed'));
 }
 
-/* 第3停止ボタンを離した瞬間 → 後ペカ */
+/* 第3停止ボタンを離した瞬間 → 後ペカ / 単チェリー成立時は必ず点灯 */
 function onStopRelease() {
-  if (state.thirdStopPressed && state.lampPending) {
+  if (!state.thirdStopPressed) return;
+  /* 単チェリー(順押しで左のみチェリー露出)は実機ではボーナス確定パターン。
+     後ペカ抽選の結果に関わらず、この停止形が出た時点で必ずGOGO!ランプを点灯させる(保険) */
+  if (!state.lampPending && !state.lampLit && !state.inBonus && state.bonusFlag &&
+      isSoloCherry(state.cols, state.pressOrder)) {
+    state.lampPending = true;
+  }
+  if (state.lampPending) {
     state.lampPending = false;
     lightLamp();
     mSet('latePeka');
