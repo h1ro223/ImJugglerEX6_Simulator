@@ -2103,17 +2103,19 @@ function refreshSkipBtn() {
     ? '現在のボーナスをスキップ (最大枚数を即獲得)'
     : '現在のボーナスをスキップ (ボーナス中のみ)';
 }
-/* ボーナスを即時消化: 実質手取り(BB252枚/RB96枚)を一気に獲得して通常の終了フローへ。
+/* ボーナスを即時消化: COUNT表示は通常消化時と同じ294枚(BB)/112枚(RB)まで進めるが、
+   実際にメダルとして持ちメダル・累計に加算するのは実質手取り(BB252枚/RB96枚)のみ。
    ※消化に必要なゲーム数×2BET分を差し引いた枚数のため、通常消化時と収支が一致する。 */
 function skipBonus() {
   if (!state.inBonus) return;
   if (state.bonusType === 'BB' && (state.bbHitPlaying || state.bonusVer === 'X')) return; // 777verは演出優先でスキップ不可
-  const target = state.bonusType === 'BB' ? BB_SKIP_PAY : RB_SKIP_PAY; // 252 / 96
-  const remain = Math.max(0, target - state.bonusPaid);
+  const grossTarget = state.bonusType === 'BB' ? BB_LIMIT + 14 : RB_LIMIT + 14; // 294 / 112 (COUNT表示用)
+  const netTarget = state.bonusType === 'BB' ? BB_SKIP_PAY : RB_SKIP_PAY;      // 252 / 96  (実際の獲得枚数)
+  const remain = Math.max(0, netTarget - state.bonusPaid); // 既に実際の獲得済み分(通常消化分)を差し引いた不足分だけ加算
   mSet('usedSkip');
-  addPayout(remain);          // メダル・累計・ミッション進捗に反映
-  /* 既に目標枚数を超えて消化済みの場合は現在値を維持(枚数が減らないようにする) */
-  state.bonusPaid = Math.max(state.bonusPaid, target);
+  addPayout(remain);          // メダル・累計・ミッション進捗に反映(実質+252/96で頭打ち)
+  /* COUNT表示・終了メッセージ用: 実際の獲得枚数とは別に294/112まで進める(既に超えていれば維持) */
+  state.bonusPaid = Math.max(state.bonusPaid, grossTarget);
   syncMedalDisplay();         // カウントアップ演出なしで即時反映 (COUNTも294/112に)
   endBonus(0);                // 通常の終了フロー (BGM即停止→Finish再生→COUNT消灯)
   refreshSkipBtn();
