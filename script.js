@@ -119,6 +119,10 @@ function consumeSecretCommand() {
 const PEKA_FIRST = 0.15;   // 先ペカ(レバーON時点灯)の割合。残り85%は後ペカ(第3停止離し)
 const BB_LIMIT   = 280;    // BB: 280枚を超える払い出しで終了
 const RB_LIMIT   = 98;     // RB: 98枚を超える払い出しで終了
+/* 「現在のボーナスをスキップ」で即時獲得する枚数(実質手取り)。
+   払い出し上限(BB294枚/RB112枚)から、消化に必要なゲーム数×2BET分を差し引いた値。 */
+const BB_SKIP_PAY = 252;   // 294 - 42 (21G分の2BET)
+const RB_SKIP_PAY = 96;    // 112 - 16 (8G分の2BET)
 const PAY_CAP    = 15;     // 1ゲームの払い出し上限
 const COUNT_MS   = 100;    // メダル数字カウント & Get1.mp3ループ間隔 (調整用)
 const CREDIT_MAX = 50;
@@ -2096,18 +2100,20 @@ function refreshSkipBtn() {
   b.disabled = !en;
   b.textContent = isX ? '777verはスキップ不可 (演出をお楽しみください)'
     : state.inBonus
-    ? `現在の${state.bonusType}をスキップ (最大枚数を即獲得)`
+    ? '現在のボーナスをスキップ (最大枚数を即獲得)'
     : '現在のボーナスをスキップ (ボーナス中のみ)';
 }
-/* ボーナスを即時消化: 最大払い出し(BB294枚/RB112枚)まで一気に獲得して通常の終了フローへ */
+/* ボーナスを即時消化: 実質手取り(BB252枚/RB96枚)を一気に獲得して通常の終了フローへ。
+   ※消化に必要なゲーム数×2BET分を差し引いた枚数のため、通常消化時と収支が一致する。 */
 function skipBonus() {
   if (!state.inBonus) return;
   if (state.bonusType === 'BB' && (state.bbHitPlaying || state.bonusVer === 'X')) return; // 777verは演出優先でスキップ不可
-  const target = state.bonusType === 'BB' ? BB_LIMIT + 14 : RB_LIMIT + 14; // 294 / 112
+  const target = state.bonusType === 'BB' ? BB_SKIP_PAY : RB_SKIP_PAY; // 252 / 96
   const remain = Math.max(0, target - state.bonusPaid);
   mSet('usedSkip');
   addPayout(remain);          // メダル・累計・ミッション進捗に反映
-  state.bonusPaid = target;
+  /* 既に目標枚数を超えて消化済みの場合は現在値を維持(枚数が減らないようにする) */
+  state.bonusPaid = Math.max(state.bonusPaid, target);
   syncMedalDisplay();         // カウントアップ演出なしで即時反映 (COUNTも294/112に)
   endBonus(0);                // 通常の終了フロー (BGM即停止→Finish再生→COUNT消灯)
   refreshSkipBtn();
@@ -2402,7 +2408,7 @@ function bindEvents() {
   $('btnSkipBonus').addEventListener('click', () => {
     if (!state.inBonus || (state.bonusType === 'BB' && state.bbHitPlaying)) return;
     if (state.gamePhase !== 'idle' || state.payoutLock) { askConfirm('リール停止・払い出し完了後にスキップできます。', null, true); return; }
-    const t = state.bonusType === 'BB' ? 'BB (294枚)' : 'RB (112枚)';
+    const t = state.bonusType === 'BB' ? `BB (${BB_SKIP_PAY}枚)` : `RB (${RB_SKIP_PAY}枚)`;
     askConfirm(`現在の${t}を最大枚数までスキップして終了します。\nよろしいですか?`, () => { skipBonus(); closeModal(); });
   });
   $('btnCustomProb').addEventListener('click', () => {
