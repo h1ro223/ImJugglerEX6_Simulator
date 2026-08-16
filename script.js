@@ -171,7 +171,7 @@ const MISSIONS = [
   /* --- レア役・バージョン系 --- */
   { id: 'm35', cat: 'レア役', name: '中段チェリー(レインボー)に初当選する', t: 1, v: s => s.rare },
   { id: 'm36', cat: 'レア役', name: '中段チェリーに累計5回当選する', t: 5, v: s => s.rare },
-  { id: 'm37', cat: 'レア役', name: 'シークレットver(1G)のBBに当選する', t: 1, v: s => s.verSP },
+  { id: 'm37', cat: 'レア役', name: '軍艦マーチver(1G)のBBに当選する', t: 1, v: s => s.verSP },
   { id: 'm38', cat: 'レア役', name: '第九ver(2〜5G)のBBに当選する', t: 1, v: s => s.verD9 },
   { id: 'm39', cat: 'レア役', name: '777ver(ちょうど77G)のBBに当選する', t: 1, v: s => s.verX },
   { id: 'm40', cat: 'レア役', name: '運命ver(ゾロ目G)のBBに当選する', t: 1, v: s => s.verUNMEI },
@@ -329,6 +329,10 @@ const state = {
   payoutLock: false,   // Get系mp3再生中は操作不可(音被り防止)
   rareLamp: false,     // 中段チェリー契機ボーナス(レインボー点灯)
   dupCherry: false,    // このゲームのチェリーがボーナス重複契機か(単チェリー制御用)
+  inWait: false,       // ウェイト消化中(Waitランプ点灯・Wait.mp3ループ中)
+  replayLamp: false,   // Replayランプ点灯状態(リプレイ成立〜そのゲーム終了まで保持)
+  gogo1Bet: false,     // システム設定: GOGO!CHANCE中は1BETのみにする
+  easyLever: false,    // システム設定: 簡単レバーモード(BET0でレバー→MAXBET+レバー)
   history: [],         // ボーナス履歴グラフ {g, t} 新しい順・最大9件
   pendingHist: null,   // 進行中ボーナスの履歴 {g, t}
   kaishuYen: 0,        // 回収額(精算で円に変換した合計)
@@ -348,7 +352,7 @@ const state = {
 const BGM_FILES = {
   BB: './BGM/BB.mp3', RB: './BGM/RB.mp3', BBFINISH: './BGM/BBFinish.mp3',
   BBHIT1: './BGM/BBhit1.mp3', BBHIT2: './BGM/BBhit2.mp3',
-  /* シークレットver (前回ボーナス終了から1GでBB) */
+  /* 軍艦マーチver (前回ボーナス終了から1GでBB) */
   BBHITSP: './BGM/BBhitSP.mp3', BBSP: './BGM/BBSP.mp3', BBFINISHSP: './BGM/BBFinishSP.mp3',
   /* 第九ver (2〜5GでBB) */
   BBHITD9: './BGM/BBhitD9.mp3', BBD9: './BGM/BBD9.mp3', BBFINISHD9: './BGM/BBFinishD9.mp3',
@@ -378,9 +382,14 @@ const BB_VERS = {
   X:      { hit: 'BBHITX',  loop: 'BBX1',    fin: 'BBFINISHX',     grape: 'GRAPE14' } // GetGrape14Xは廃止・通常音を使用
 };
 
-/* BB当選時のG数(前回ボーナス終了から)で楽曲バージョンを決定 */
+/* BB当選時のG数(前回ボーナス終了から)で楽曲バージョンを決定
+   ※前回ボーナスが存在しない(=まだ一度もボーナスを引いていない)場合は、
+     「前回ボーナス終了から数えたG数」自体が成立しないため必ずNORMALを返す。
+     これがないと BB0/RB0/総回転0 の状態で1G目や2〜5G目に当選しただけで
+     軍艦マーチver・第九verが鳴ってしまう。 */
 function pickBBVersion(g) {
-  if (g === 1) return 'SP';                          // シークレット
+  if (!state.hadBonus) return 'NORMAL'; // 初回ボーナスは必ず通常ver
+  if (g === 1) return 'SP';                          // 軍艦マーチ
   if (g >= 2 && g <= 5) return 'D9';                 // 第九
   if (g === 77) return 'X';                          // 777(オリジナル)
   if (g >= 11 && g <= 99 && g % 11 === 0) return 'UNMEI'; // 運命(ゾロ目・77は上で除外済み)
@@ -388,7 +397,8 @@ function pickBBVersion(g) {
 }
 const SE_FILES = {
   BET: './SE/Bet.mp3', MAXBET2: './SE/MaxBet2.mp3', MAXBET3: './SE/MaxBet3.mp3',
-  LEVER: './SE/Lever.mp3', STOP: './SE/Stop.mp3', STOP7: './SE/Stop7.mp3',
+  LEVER: './SE/Lever.mp3', LEVERSP: './SE/LeverSP.mp3', WAIT: './SE/Wait.mp3',
+  STOP: './SE/Stop.mp3', STOP7: './SE/Stop7.mp3',
   GRAPE8: './SE/GetGrape8.mp3', GRAPE14: './SE/GetGrape14.mp3',
   GRAPE14SP: './SE/GetGrape14SP.mp3', GRAPE14X: './SE/GetGrape14X.mp3',
   GET1: './SE/Get1.mp3', GET1FIN: './SE/Get1Finish.mp3',
@@ -397,7 +407,7 @@ const SE_FILES = {
 
 const audio = {
   ctx: null, buffers: {}, seGain: null, bgmGain: null,
-  se: {}, bgm: {}, bgmSrc: null, bgmFallbackEl: null,
+  se: {}, bgm: {}, bgmSrc: null, bgmFallbackEl: null, seLoopSrc: null, seLoopEl: null,
   init() {
     /* HTMLAudio (file://直開きなどWebAudioが使えない場合のフォールバック) */
     try {
@@ -448,7 +458,7 @@ const audio = {
   playSE(key, overlap = true) {
     if (!state.seOn) return;
     /* 777ver: hit曲の中にBet/Lever/Stop/GOGOの音が入っているため、再生中は該当SEを鳴らさない */
-    if (state.seMuteX && (key === 'BET' || key === 'MAXBET2' || key === 'MAXBET3' || key === 'LEVER' || key === 'STOP' || key === 'STOP7' || key === 'GOGO')) return;
+    if (state.seMuteX && (key === 'BET' || key === 'MAXBET2' || key === 'MAXBET3' || key === 'LEVER' || key === 'LEVERSP' || key === 'WAIT' || key === 'STOP' || key === 'STOP7' || key === 'GOGO')) return;
     const buf = this.buffers[key];
     if (buf && this.ctx) {
       const src = this.ctx.createBufferSource();
@@ -522,6 +532,37 @@ const audio = {
     base.onerror = fin;
     base.play().catch(fin);
   },
+  /* --- SEのループ再生 (Wait.mp3など短尺SEをシームレスに繰り返す) ---
+     WebAudioのAudioBufferSourceNode.loopを使うため継ぎ目のない完全ループになる。
+     WebAudio非対応環境ではHTMLAudioのloop属性にフォールバック。 */
+  playSELoop(key) {
+    this.stopSELoop();
+    if (!state.seOn) return;
+    if (state.seMuteX) return;
+    const buf = this.buffers[key];
+    if (buf && this.ctx) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;             // 継ぎ目なしループ
+      src.loopStart = 0;
+      src.loopEnd = buf.duration;
+      src.connect(this.seGain);
+      src.start();
+      this.seLoopSrc = src;
+      return;
+    }
+    const base = this.se[key];
+    if (!base) return;
+    base.loop = true;
+    base.volume = state.seVol;
+    base.currentTime = 0;
+    base.play().catch(() => {});
+    this.seLoopEl = base;
+  },
+  stopSELoop() {
+    if (this.seLoopSrc) { try { this.seLoopSrc.stop(); } catch (e) {} this.seLoopSrc = null; }
+    if (this.seLoopEl) { this.seLoopEl.pause(); this.seLoopEl.loop = false; this.seLoopEl.currentTime = 0; this.seLoopEl = null; }
+  },
   setBgmVolume() { this.applyVolumes(); },
   /* Get1をn回一定間隔でループ→最後にGet1Finish (間隔を空けず一定速度) */
   get1Loop(coins) {
@@ -553,7 +594,7 @@ const el = {
   modalOverlay: $('modalOverlay'), currentSetting: $('currentSetting'),
   chkBgm: $('chkBgm'), chkSe: $('chkSe'),
   btnForcePeka: $('btnForcePeka'),
-  chkMsgBar: $('chkMsgBar'),
+  chkMsgBar: $('chkMsgBar'), chkGogo1Bet: $('chkGogo1Bet'), chkEasyLever: $('chkEasyLever'),
   volBgm: $('volBgm'), volSe: $('volSe'), bonusGraph: $('bonusGraph'),
   wKaishu: $('wKaishu')
 };
@@ -585,9 +626,12 @@ function evalWins(cols) {
   return wins;
 }
 
-function payoutFor(wins, bet) {
+/* cherryUnit: チェリー1ラインあたりの払い出し枚数の上書き(省略時はBET数から算出)
+   非ボーナス時の1BET連チェリー(左チェリー+中リールに繋がるチェリー)は1枚×2ライン=2枚 */
+function payoutFor(wins, bet, cherryUnit) {
   let total = 0;
   let grapePaid = false;
+  const cUnit = (cherryUnit === undefined) ? (bet === 3 ? 1 : 7) : cherryUnit;
   for (const w of wins) {
     switch (w.role) {
       case 'GRAPE':
@@ -596,10 +640,19 @@ function payoutFor(wins, bet) {
         break;
       case 'BELL':   total += 14; break;
       case 'CLOWN':  total += 10; break;
-      case 'CHERRY': total += (bet === 3 ? 1 : 7); break; // 角チェリーは2ライン=2回分(本家準拠)
+      case 'CHERRY': total += cUnit; break; // 角チェリーは2ライン=2回分(本家準拠)
     }
   }
   return Math.min(total, PAY_CAP);
+}
+
+/* このゲームのチェリー1ラインあたりの払い出し枚数を決定 */
+function cherryUnitFor(bet, cols) {
+  if (bet === 3) return 1;
+  /* 非ボーナス時の1BETで「左チェリー + 中リールの真横/斜めにチェリー」= 連チェリーなら
+     ボーナス中と同様に1枚×2ライン=2枚のみ。2BETは従来通り7枚×2ライン=14枚。 */
+  if (bet === 1 && !state.inBonus && centerCherryLinked(cols[0], cols[1])) return 1;
+  return 7;
 }
 
 /* ================= 単チェリー判定 =================
@@ -942,9 +995,16 @@ function tryConsumeCoins(n) {
   return true;
 }
 
+/* システム設定「GOGO!CHANCE中は1BETのみにする」が有効に働く状況か
+   (GOGOランプ点灯中かつ通常ゲーム中。ボーナス中は元々2BET固定なので対象外) */
+function gogoOneBetActive() {
+  return !!(state.gogo1Bet && state.lampLit && !state.inBonus);
+}
+
 function addBet(n) {
   if (state.gamePhase !== 'idle' || state.replayPending || state.inBonus || state.betLock || state.payoutLock || state.xLock) return;
-  const newBet = Math.min(3, state.bet + n);
+  const cap = gogoOneBetActive() ? 1 : 3;
+  const newBet = Math.min(cap, state.bet + n);
   const need = newBet - state.bet;
   if (need <= 0) return;
   if (!tryConsumeCoins(need)) { message('メダルが足りません! 貸出ボタンを押してください'); return; }
@@ -958,14 +1018,15 @@ function addBet(n) {
 
 function setMaxBet() {
   if (state.gamePhase !== 'idle' || state.replayPending || state.inBonus || state.betLock || state.payoutLock || state.xLock) return;
-  const max = 3;
+  /* GOGO中1BET設定が有効なら、MAXBETを押しても1枚しか入らない */
+  const max = gogoOneBetActive() ? 1 : 3;
   const need = max - state.bet;
   if (need <= 0) return;
   if (!tryConsumeCoins(need)) { message('メダルが足りません! 貸出ボタンを押してください'); return; }
   state.bet = max;
   state.totalIn += need;
   mAdd('lifeIn', need);
-  audio.playSE('MAXBET3'); // 通常時3枚BET
+  audio.playSE(max === 1 ? 'BET' : 'MAXBET3'); // 通常時3枚BET / GOGO中1BET設定時は1枚
   animateMedals(COUNT_MS); // 1枚ずつ減らして表示
   updateUI();
 }
@@ -991,12 +1052,15 @@ function leverOn(betDelayMs = 1000) {
       autoBetDelay = betDelayMs;
     }
   } else if (state.bet === 0) {
-    // 未BETならMAXBET扱い(便利機能)
-    if (!tryConsumeCoins(3)) { message('メダルが足りません! 貸出ボタンを押してください'); return; }
-    state.bet = 3;
-    state.totalIn += 3;
-    mAdd('lifeIn', 3);
-    audio.playSE('MAXBET3');
+    /* 簡単レバーモードOFF時はBET0でレバーを引けない(実機準拠) */
+    if (!state.easyLever) { message('メダルをBETしてください'); return; }
+    /* 簡単レバーモードON: 未BETならMAXBET扱い(GOGO中1BET設定時は1枚) */
+    const auto = gogoOneBetActive() ? 1 : 3;
+    if (!tryConsumeCoins(auto)) { message('メダルが足りません! 貸出ボタンを押してください'); return; }
+    state.bet = auto;
+    state.totalIn += auto;
+    mAdd('lifeIn', auto);
+    audio.playSE(auto === 1 ? 'BET' : 'MAXBET3');
     animateMedals(COUNT_MS);
     autoBetDelay = betDelayMs;
   }
@@ -1007,22 +1071,47 @@ function leverOn(betDelayMs = 1000) {
   else fireLever();
 }
 
+/* レバーONのSEキー: 軍艦マーチver(SP)のBB中、7ゲームごと(1G目・8G目・15G目…)は専用音
+   COUNT換算だと 0→14 / 98→112 / 196→210 のタイミング。BB中は毎ゲーム14枚払い出しのため
+   bonusPaid / 14 でそのボーナス内の消化ゲーム数が求まる。 */
+function leverSEKey() {
+  if (state.inBonus && state.bonusType === 'BB' && state.bonusVer === 'SP') {
+    const gameNo = Math.floor(state.bonusPaid / 14) + 1; // 1始まり
+    if ((gameNo - 1) % 7 === 0) return 'LEVERSP';
+  }
+  return 'LEVER';
+}
+
+/* レバー本体の動作(アニメーション+SE)。ウェイトがある場合はウェイト明けに実行される */
+function doLeverAction() {
+  el.lever.classList.add('pushed');
+  setTimeout(() => el.lever.classList.remove('pushed'), 150);
+  audio.playSE(leverSEKey());
+}
+
 function fireLever() {
   const now = performance.now();
   const waitRemain = state.lastSpinStart + WAIT_MS - now;
 
   state.gamePhase = 'spinning';
-  el.lever.classList.add('pushed');
-  setTimeout(() => el.lever.classList.remove('pushed'), 150);
-  audio.playSE('LEVER');
 
   if (waitRemain > 30) {
-    el.lampWait.classList.add('on');
+    /* ウェイト中: Wait.mp3をシームレスループ。レバー音・レバー動作・回転開始はウェイト明けまで保留 */
+    state.inWait = true;
     message('ウェイト中...');
-    setTimeout(() => { el.lampWait.classList.remove('on'); startGame(); }, waitRemain);
-  } else {
-    startGame();
+    audio.playSELoop('WAIT');
+    updateUI();
+    setTimeout(() => {
+      audio.stopSELoop();     // ウェイト終了と同時に即停止
+      state.inWait = false;
+      doLeverAction();        // Lever.mp3 + レバーアニメーション
+      startGame();            // リール回転開始
+      updateUI();
+    }, waitRemain);
+    return;
   }
+  doLeverAction();
+  startGame();
   updateUI();
 }
 
@@ -1035,9 +1124,6 @@ function startGame() {
   state.pressOrder = [];
   state.payTarget = 0;
   disp.payout = 0;
-  el.lampReplay.classList.remove('on');
-  el.lampStart.classList.add('on');
-  setTimeout(() => el.lampStart.classList.remove('on'), 400);
 
   /* --- 抽選 --- */
   if (state.inBonus) {
@@ -1251,7 +1337,7 @@ function resolveGame() {
   if (bonusAligned) {
     startBonus(state.bonusFlag);
   } else {
-    pay = payoutFor(wins, bet);
+    pay = payoutFor(wins, bet, cherryUnitFor(bet, state.cols));
     const hasReplay = wins.some(w => w.role === 'REPLAY');
 
     if (pay > 0) {
@@ -1290,9 +1376,10 @@ function resolveGame() {
         payoutSndMs = 0; // SE OFF時はロックなし(カウント演出は上で開始済み)
       }
     }
+    /* Replayランプ: 成立したゲームから、次のゲームが終わるまで点灯状態を保持 */
+    state.replayLamp = hasReplay;
     if (hasReplay) {
       state.replayPending = bet;
-      el.lampReplay.classList.add('on');
       message('REPLAY! もう一度レバーON!');
       const gogoWaitR = Math.max(0, state.gogoSndEnd - performance.now());
       if (gogoWaitR > 0) setTimeout(() => audio.playSE('REPLAY'), gogoWaitR);
@@ -1866,8 +1953,9 @@ function updateUI() {
 
   const idle = state.gamePhase === 'idle' && !state.betLock && !state.payoutLock;
   const betLocked = !idle || state.replayPending > 0 || state.inBonus;
-  el.btnBet1.disabled = betLocked || state.bet >= 3;
-  el.btnMaxBet.disabled = betLocked || state.bet >= 3;
+  const betCap = gogoOneBetActive() ? 1 : 3;
+  el.btnBet1.disabled = betLocked || state.bet >= betCap;
+  el.btnMaxBet.disabled = betLocked || state.bet >= betCap;
   el.btnRent.disabled = !idle;
   el.btnPayback.disabled = !idle || state.bet > 0 || state.mochi <= 0;
   el.lever.classList.toggle('disabled', !idle || state.xLock);
@@ -1879,11 +1967,27 @@ function updateUI() {
     btn.classList.toggle('active', canStop);
   });
 
-  // Insert Medals ランプ
-  const needBet = idle && state.bet === 0 && !state.replayPending && !state.inBonus;
-  el.lampInsert.classList.toggle('on', needBet);
-  el.lampReplay.classList.toggle('on', state.replayPending > 0);
+  updateStateLamps();
   renderGraph();
+}
+
+/* ================= 状態ランプ (Start / Replay / Wait / Insert Medals) =================
+   ・Insert Medals … レバーを引くまでの間ずっと0.15秒間隔で点滅
+   ・Start         … レバー待ちかつBET数が1以上(リプレイ自動BET含む)で点灯
+   ・Wait          … ウェイト消化中のみ点灯
+   ・Replay        … リプレイ成立で点灯し、そのゲームが終わる(次の停止)まで保持。
+                     ただしリール回転中は全ランプ消灯のため見た目上は消える。 */
+function updateStateLamps() {
+  const waitingLever = state.gamePhase === 'idle' && !state.xLock;
+  const spinning = state.gamePhase === 'spinning' && !state.inWait;
+  const hasBet = (state.bet > 0 || state.replayPending > 0);
+
+  el.lampStart.classList.toggle('on', waitingLever && hasBet);
+  el.lampReplay.classList.toggle('on', state.replayLamp && !spinning);
+  el.lampWait.classList.toggle('on', !!state.inWait);
+  /* Insert Medalsは「点灯」ではなく点滅で表現(CSSアニメーション) */
+  el.lampInsert.classList.toggle('blink', waitingLever);
+  el.lampInsert.classList.remove('on');
 }
 
 /* ================= ボーナス履歴グラフ (横10列×縦9段) ================= */
@@ -1954,6 +2058,7 @@ function saveGame() {
       history: state.history, pendingHist: state.pendingHist,
       rareLamp: state.rareLamp, kaishuYen: state.kaishuYen,
       reelSpeed: state.reelSpeed, msgBarOn: state.msgBarOn,
+      replayLamp: state.replayLamp, gogo1Bet: state.gogo1Bet, easyLever: state.easyLever,
       bgmOn: state.bgmOn, seOn: state.seOn,
       bgmVol: state.bgmVol, seVol: state.seVol
     };
@@ -1998,6 +2103,9 @@ function loadGame() {
     state.bbWinG = d.bbWinG || 0;
     state.bonusVer = d.bonusVer || 'NORMAL';
     state.replayPending = d.replayPending || 0;
+    state.replayLamp = !!d.replayLamp;
+    state.gogo1Bet = !!d.gogo1Bet;
+    state.easyLever = !!d.easyLever;
     state.history = Array.isArray(d.history) ? d.history.slice(0, 9) : [];
     state.pendingHist = d.pendingHist || null;
     state.rareLamp = !!d.rareLamp;
@@ -2032,7 +2140,7 @@ function resetAll() {
   if (state.gamePhase !== 'idle') { message('リール停止後にリセットできます'); return; }
   Object.assign(state, {
     credit: 0, mochi: 0, investYen: 0, totalIn: 0, totalOut: 0,
-    bet: 0, replayPending: 0, bonusFlag: null, smallFlag: null,
+    bet: 0, replayPending: 0, replayLamp: false, inWait: false, bonusFlag: null, smallFlag: null,
     inBonus: false, bonusType: null, bonusPaid: 0,
     history: [], pendingHist: null, betLock: false, bbHitPlaying: false, payoutLock: false,
     bbWinG: 0, bonusVer: 'NORMAL', bonusCountHold: false, bonusCountFinal: 0,
@@ -2042,6 +2150,7 @@ function resetAll() {
     counts: { bb: 0, rb: 0, total: 0, start: 0 }
   });
   audio.stopBGM();
+  audio.stopSELoop();
   unlightLamp();
   el.topBanner.classList.remove('bonus-flash', 'x-rainbow');
   clearBonusBlink();
@@ -2063,6 +2172,8 @@ function openModal() {
   refreshSpeedBtns();
 
   el.chkMsgBar.checked = state.msgBarOn;
+  el.chkGogo1Bet.checked = state.gogo1Bet;
+  el.chkEasyLever.checked = state.easyLever;
   syncSoundControls();
   refreshPekaBtn();
   refreshSettingBtns();
@@ -2232,6 +2343,16 @@ function bindEvents() {
     });
   });
   el.chkMsgBar.addEventListener('change', () => { state.msgBarOn = el.chkMsgBar.checked; applyMsgBar(); saveGame(); });
+  el.chkGogo1Bet.addEventListener('change', () => {
+    state.gogo1Bet = el.chkGogo1Bet.checked;
+    saveGame(); updateUI();
+    message(state.gogo1Bet ? 'GOGO!CHANCE中は1BETのみになります' : 'GOGO!CHANCE中のBET制限を解除しました');
+  });
+  el.chkEasyLever.addEventListener('change', () => {
+    state.easyLever = el.chkEasyLever.checked;
+    saveGame(); updateUI();
+    message(state.easyLever ? '簡単レバーモード ON (BET0でもレバーでMAXBET)' : '簡単レバーモード OFF (BETしないとレバーを引けません)');
+  });
   el.dpAuto.addEventListener('click', () => { audio.ensure(); setAutoMode(!state.autoMode); });
   el.btnForcePeka.addEventListener('click', () => {
     state.forceBonus = !state.forceBonus;
@@ -2313,6 +2434,8 @@ function bindEvents() {
   refreshDataBtn();
   $('btnCatSystem').addEventListener('click', () => {
     el.chkMsgBar.checked = state.msgBarOn;
+    el.chkGogo1Bet.checked = state.gogo1Bet;
+    el.chkEasyLever.checked = state.easyLever;
     syncSoundControls();
     $('systemOverlay').hidden = false;
   });
@@ -2557,9 +2680,9 @@ function bindEvents() {
     { g: '通常ver',       key: 'BBHIT2',      name: 'BB当選ファンファーレ 2' },
     { g: '通常ver',       key: 'BB',          name: 'BB中BGM' },
     { g: '通常ver',       key: 'BBFINISH',    name: 'BB終了' },
-    { g: 'シークレットver', key: 'BBHITSP',    name: 'BB当選 (シークレット)' },
-    { g: 'シークレットver', key: 'BBSP',       name: 'BB中BGM (シークレット)' },
-    { g: 'シークレットver', key: 'BBFINISHSP', name: 'BB終了 (シークレット)' },
+    { g: '軍艦マーチver', key: 'BBHITSP',    name: 'BB当選 (軍艦マーチ)' },
+    { g: '軍艦マーチver', key: 'BBSP',       name: 'BB中BGM (軍艦マーチ)' },
+    { g: '軍艦マーチver', key: 'BBFINISHSP', name: 'BB終了 (軍艦マーチ)' },
     { g: '第九ver',       key: 'BBHITD9',     name: 'BB当選 (第九)' },
     { g: '第九ver',       key: 'BBD9',        name: 'BB中BGM (第九)' },
     { g: '第九ver',       key: 'BBFINISHD9',  name: 'BB終了 (第九)' },
