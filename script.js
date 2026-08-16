@@ -336,7 +336,7 @@ const state = {
   history: [],         // ボーナス履歴グラフ {g, t} 新しい順・最大9件
   pendingHist: null,   // 進行中ボーナスの履歴 {g, t}
   kaishuYen: 0,        // 回収額(精算で円に変換した合計)
-  forceBonus: false,   // 次ゲームでGOGO!確定(1回)
+  forceBonus: false,   // 次ゲームでGOGO!CHANCE点灯(1回)
   reelSpeed: 1,        // リール回転速度倍率 (0.25 / 0.5 / 1)
   autoMode: false,     // Auto Mode
   msgBarOn: false,     // メッセージバー表示 (デフォルトOFF)
@@ -455,7 +455,7 @@ const audio = {
     if (a && isFinite(a.duration) && a.duration > 0) return a.duration * 1000;
     return fallbackMs;
   },
-  playSE(key, overlap = true) {
+  playSE(key, overlap = true, volMult = 1) {
     if (!state.seOn) return;
     /* 777ver: hit曲の中にBet/Lever/Stop/GOGOの音が入っているため、再生中は該当SEを鳴らさない */
     if (state.seMuteX && (key === 'BET' || key === 'MAXBET2' || key === 'MAXBET3' || key === 'LEVER' || key === 'LEVERSP' || key === 'WAIT' || key === 'STOP' || key === 'STOP7' || key === 'GOGO')) return;
@@ -463,14 +463,21 @@ const audio = {
     if (buf && this.ctx) {
       const src = this.ctx.createBufferSource();
       src.buffer = buf;
-      src.connect(this.seGain);
+      if (volMult !== 1) {
+        /* 音量を絞って重ねたい場合(LeverSPと同時に鳴らすLever音など) */
+        const g = this.ctx.createGain();
+        g.gain.value = volMult;
+        src.connect(g); g.connect(this.seGain);
+      } else {
+        src.connect(this.seGain);
+      }
       src.start();
       return;
     }
     const base = this.se[key];
     if (!base) return;
     const a = overlap ? base.cloneNode() : base;
-    a.volume = state.seVol;
+    a.volume = Math.max(0, Math.min(1, state.seVol * volMult));
     if (!overlap) a.currentTime = 0;
     a.play().catch(() => {});
   },
@@ -1001,9 +1008,27 @@ function gogoOneBetActive() {
   return !!(state.gogo1Bet && state.lampLit && !state.inBonus);
 }
 
+/* 現在の状況でBETできる上限枚数 (ボーナス中=2枚固定 / GOGO中1BET設定=1枚 / 通常=3枚) */
+function betCapNow() {
+  if (state.inBonus) return 2;
+  return gogoOneBetActive() ? 1 : 3;
+}
+
+/* レバーを引ける状態か(BET数の観点のみ。gamePhase等の判定は呼び出し側)
+   ・リプレイ自動BETがあれば常に引ける
+   ・BET済みなら引ける
+   ・BET0でも「簡単レバーモード」ONなら引ける(MAXBET→レバーをまとめて実行)
+   ボーナス中もMAXBETで2枚投入するまでは引けない(実機準拠) */
+function canPullLever() {
+  if (state.replayPending > 0) return true;
+  if (state.bet > 0) return true;
+  return !!state.easyLever;
+}
+
 function addBet(n) {
+  /* 1BETボタンはボーナス中は使用不可(ボーナス中はMAXBETで2枚固定) */
   if (state.gamePhase !== 'idle' || state.replayPending || state.inBonus || state.betLock || state.payoutLock || state.xLock) return;
-  const cap = gogoOneBetActive() ? 1 : 3;
+  const cap = betCapNow();
   const newBet = Math.min(cap, state.bet + n);
   const need = newBet - state.bet;
   if (need <= 0) return;
@@ -1017,16 +1042,16 @@ function addBet(n) {
 }
 
 function setMaxBet() {
-  if (state.gamePhase !== 'idle' || state.replayPending || state.inBonus || state.betLock || state.payoutLock || state.xLock) return;
-  /* GOGO中1BET設定が有効なら、MAXBETを押しても1枚しか入らない */
-  const max = gogoOneBetActive() ? 1 : 3;
+  if (state.gamePhase !== 'idle' || state.replayPending || state.betLock || state.payoutLock || state.xLock) return;
+  /* ボーナス中=2枚固定 / GOGO中1BET設定=1枚 / 通常=3枚 */
+  const max = betCapNow();
   const need = max - state.bet;
   if (need <= 0) return;
   if (!tryConsumeCoins(need)) { message('メダルが足りません! 貸出ボタンを押してください'); return; }
   state.bet = max;
   state.totalIn += need;
   mAdd('lifeIn', need);
-  audio.playSE(max === 1 ? 'BET' : 'MAXBET3'); // 通常時3枚BET / GOGO中1BET設定時は1枚
+  audio.playSE(max === 1 ? 'BET' : (max === 2 ? 'MAXBET2' : 'MAXBET3')); // ボーナス中は2枚BET音
   animateMedals(COUNT_MS); // 1枚ずつ減らして表示
   updateUI();
 }
@@ -1041,26 +1066,19 @@ function leverOn(betDelayMs = 1000) {
   if (state.replayPending) {
     state.bet = state.replayPending;
     state.replayPending = 0;
-  } else if (state.inBonus) {
-    if (state.bet === 0) {
-      if (!tryConsumeCoins(2)) { message('メダルが足りません! 貸出ボタンを押してください'); return; }
-      state.bet = 2;
-      state.totalIn += 2;
-      mAdd('lifeIn', 2);
-      audio.playSE('MAXBET2'); // ボーナス中は2枚BET固定
-      animateMedals(COUNT_MS);
-      autoBetDelay = betDelayMs;
-    }
   } else if (state.bet === 0) {
-    /* 簡単レバーモードOFF時はBET0でレバーを引けない(実機準拠) */
-    if (!state.easyLever) { message('メダルをBETしてください'); return; }
-    /* 簡単レバーモードON: 未BETならMAXBET扱い(GOGO中1BET設定時は1枚) */
-    const auto = gogoOneBetActive() ? 1 : 3;
+    /* BET0ではレバーを引けない(実機準拠)。ボーナス中もMAXBETで2枚入れる必要がある。
+       「簡単レバーモード」ON時のみ、MAXBET→レバーをまとめて実行する従来動作になる。 */
+    if (!state.easyLever) {
+      message(state.inBonus ? 'MAXBETを押してメダルを投入してください' : 'メダルをBETしてください');
+      return;
+    }
+    const auto = betCapNow(); // ボーナス中=2枚 / GOGO中1BET設定=1枚 / 通常=3枚
     if (!tryConsumeCoins(auto)) { message('メダルが足りません! 貸出ボタンを押してください'); return; }
     state.bet = auto;
     state.totalIn += auto;
     mAdd('lifeIn', auto);
-    audio.playSE(auto === 1 ? 'BET' : 'MAXBET3');
+    audio.playSE(auto === 1 ? 'BET' : (auto === 2 ? 'MAXBET2' : 'MAXBET3'));
     animateMedals(COUNT_MS);
     autoBetDelay = betDelayMs;
   }
@@ -1082,11 +1100,21 @@ function leverSEKey() {
   return 'LEVER';
 }
 
+/* LeverSPと重ねて鳴らす通常Lever.mp3の音量倍率(ギリギリ聞こえる程度) */
+const LEVER_SUB_VOL = 0.22;
+
 /* レバー本体の動作(アニメーション+SE)。ウェイトがある場合はウェイト明けに実行される */
 function doLeverAction() {
   el.lever.classList.add('pushed');
   setTimeout(() => el.lever.classList.remove('pushed'), 150);
-  audio.playSE(leverSEKey());
+  const key = leverSEKey();
+  if (key === 'LEVERSP') {
+    /* 軍艦マーチverの節目: LeverSPを主役にしつつ、通常Leverも音量を絞って同時再生 */
+    audio.playSE('LEVERSP');
+    audio.playSE('LEVER', true, LEVER_SUB_VOL);
+  } else {
+    audio.playSE('LEVER');
+  }
 }
 
 function fireLever() {
@@ -1335,6 +1363,7 @@ function resolveGame() {
   const bonusAligned = state.bonusFlag && wins.some(w => w.role === state.bonusFlag);
 
   if (bonusAligned) {
+    state.replayLamp = false; // ボーナス突入でReplayランプは消灯
     startBonus(state.bonusFlag);
   } else {
     pay = payoutFor(wins, bet, cherryUnitFor(bet, state.cols));
@@ -1727,19 +1756,23 @@ function endBonus(payoutSndMs = 0) {
   /* COUNTは294(BB)/112(RB)まで表示しきってから消す(本家準拠) */
   state.bonusCountHold = true;
   state.bonusCountFinal = got;
-  /* 履歴グラフ: 左端(進行中)を確定して右へシフト */
-  if (state.pendingHist) {
-    state.history.unshift(state.pendingHist);
-    if (state.history.length > 9) state.history.length = 9;
-    state.pendingHist = null;
-  }
   el.topBanner.classList.remove('bonus-flash', 'x-rainbow');
   message(`${type === 'BB' ? 'BIG' : 'REGULAR'} BONUS 終了! ${got}枚獲得!`);
   const hideCount = () => {
     state.bonusCountHold = false;
     state.bonusCountFinal = 0;
     disp.bonus = 0;
+    /* 履歴グラフ: COUNT表示が「---」になるのと同じタイミングで
+       左端(進行中)を確定して右へシフトする */
+    if (state.pendingHist) {
+      state.history.unshift(state.pendingHist);
+      if (state.history.length > 9) state.history.length = 9;
+      state.pendingHist = null;
+    }
     renderMedals();
+    renderGraph();
+    saveGame();
+    updateUI();
   };
   /* 最終ゲーム分のカウントアップが表示しきるまでの時間 */
   const countUpMs = COUNT_MS * 14 + 100;
@@ -1952,13 +1985,15 @@ function updateUI() {
   el.betLamps.forEach((lamp, i) => lamp.classList.toggle('on', dispBet >= i + 1));
 
   const idle = state.gamePhase === 'idle' && !state.betLock && !state.payoutLock;
-  const betLocked = !idle || state.replayPending > 0 || state.inBonus;
-  const betCap = gogoOneBetActive() ? 1 : 3;
-  el.btnBet1.disabled = betLocked || state.bet >= betCap;
+  /* ボーナス中はMAXBETのみ有効(2枚固定)。1BETボタンは無効のまま */
+  const betLocked = !idle || state.replayPending > 0;
+  const betCap = betCapNow();
+  el.btnBet1.disabled = betLocked || state.inBonus || state.bet >= betCap;
   el.btnMaxBet.disabled = betLocked || state.bet >= betCap;
   el.btnRent.disabled = !idle;
   el.btnPayback.disabled = !idle || state.bet > 0 || state.mochi <= 0;
-  el.lever.classList.toggle('disabled', !idle || state.xLock);
+  /* レバー: BET0では引けない(簡単レバーモードON時のみ0BETでも引ける) */
+  el.lever.classList.toggle('disabled', !idle || state.xLock || !canPullLever());
 
   // ストップボタン
   el.stopBtns.forEach((btn, i) => {
@@ -1972,18 +2007,18 @@ function updateUI() {
 }
 
 /* ================= 状態ランプ (Start / Replay / Wait / Insert Medals) =================
-   ・Insert Medals … レバーを引くまでの間ずっと0.15秒間隔で点滅
+   ・Insert Medals … レバーを引くまでの間ずっと0.20秒間隔で点滅
    ・Start         … レバー待ちかつBET数が1以上(リプレイ自動BET含む)で点灯
    ・Wait          … ウェイト消化中のみ点灯
-   ・Replay        … リプレイ成立で点灯し、そのゲームが終わる(次の停止)まで保持。
-                     ただしリール回転中は全ランプ消灯のため見た目上は消える。 */
+   ・Replay        … リプレイ成立で点灯。次のゲーム(リプレイゲーム)の**リール停止まで
+                     点灯を維持**し、その停止で再びリプレイが揃えば点灯継続、
+                     揃わなければそこで消灯する(実機準拠)。回転中も消灯しない。 */
 function updateStateLamps() {
   const waitingLever = state.gamePhase === 'idle' && !state.xLock;
-  const spinning = state.gamePhase === 'spinning' && !state.inWait;
   const hasBet = (state.bet > 0 || state.replayPending > 0);
 
   el.lampStart.classList.toggle('on', waitingLever && hasBet);
-  el.lampReplay.classList.toggle('on', state.replayLamp && !spinning);
+  el.lampReplay.classList.toggle('on', !!state.replayLamp);
   el.lampWait.classList.toggle('on', !!state.inWait);
   /* Insert Medalsは「点灯」ではなく点滅で表現(CSSアニメーション) */
   el.lampInsert.classList.toggle('blink', waitingLever);
@@ -2253,7 +2288,7 @@ function refreshPekaBtn() {
     b.classList.remove('armed');
   } else {
     b.disabled = false;
-    b.textContent = state.forceBonus ? '★ ペカ予約中! (タップで解除)' : '次ゲームでGOGO!確定 (1回)';
+    b.textContent = state.forceBonus ? '★ ペカ予約中! (タップで解除)' : '次ゲームでGOGO!CHANCE点灯';
     b.classList.toggle('armed', state.forceBonus);
   }
 }

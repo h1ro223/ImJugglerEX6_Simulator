@@ -236,8 +236,8 @@ html, body {
   text-shadow: 0 0 6px var(--lampGlow, #ffb830), 0 0 12px var(--lampGlow, #ffb830);
   box-shadow: inset 0 0 10px rgba(255,255,255,.12), 0 0 9px var(--lampGlow, #ffb830);
 }
-/* Insert Medals: 0.15秒ごとの点滅 (点灯0.15s → 消灯0.15s の0.3s周期) */
-.state-lamp.blink { animation: lampBlink .3s steps(1, end) infinite; }
+/* Insert Medals: 0.20秒ごとの点滅 (点灯0.20s → 消灯0.20s の0.4s周期) */
+.state-lamp.blink { animation: lampBlink .4s steps(1, end) infinite; }
 @keyframes lampBlink {
   0%, 49.9% {
     color: var(--lampOn, #fff);
