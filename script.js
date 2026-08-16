@@ -121,6 +121,8 @@ const BB_LIMIT   = 280;    // BB: 280枚を超える払い出しで終了
 const RB_LIMIT   = 98;     // RB: 98枚を超える払い出しで終了
 /* 「現在のボーナスをスキップ」で即時獲得する枚数(実質手取り)。
    払い出し上限(BB294枚/RB112枚)から、消化に必要なゲーム数×2BET分を差し引いた値。 */
+const BET_LAMP_MS = 50;    // BETランプを1つずつ点灯させる間隔(MaxBet2/3.mp3に同期)
+const BET_CT_MS   = 100;   // BET操作後にレバーを受け付けないクールタイム(同時押し対策)
 const BB_SKIP_PAY = 252;   // 294 - 42 (21G分の2BET)
 const RB_SKIP_PAY = 96;    // 112 - 16 (8G分の2BET)
 const PAY_CAP    = 15;     // 1ゲームの払い出し上限
@@ -339,6 +341,8 @@ const state = {
   forceBonus: false,   // 次ゲームでGOGO!CHANCE点灯(1回)
   reelSpeed: 1,        // リール回転速度倍率 (0.25 / 0.5 / 1)
   autoMode: false,     // Auto Mode
+  betLampShown: 0,     // BETランプの点灯本数(1つずつ点灯させる演出用の表示値)
+  betCtUntil: 0,       // この時刻(performance.now)までレバー操作を受け付けない(BET直後のCT)
   msgBarOn: false,     // メッセージバー表示 (デフォルトOFF)
   payTarget: 0,        // PAY OUT表示の目標値 (カウントアップ演出用)
   gogoSndEnd: 0,       // GOGOCHANCE.mp3の再生終了時刻 (SE被り防止)
@@ -1025,6 +1029,17 @@ function canPullLever() {
   return !!state.easyLever;
 }
 
+/* BET操作直後のクールタイム開始(同時押しで即レバーが入るのを防ぐ) */
+function startBetCT() {
+  state.betCtUntil = performance.now() + BET_CT_MS;
+  updateUI();
+  setTimeout(updateUI, BET_CT_MS + 10); // CT明けにレバーのグレーアウトを解除
+}
+/* クールタイム中か */
+function betCtActive() {
+  return performance.now() < state.betCtUntil;
+}
+
 function addBet(n) {
   /* 1BETボタンはボーナス中は使用不可(ボーナス中はMAXBETで2枚固定) */
   if (state.gamePhase !== 'idle' || state.replayPending || state.inBonus || state.betLock || state.payoutLock || state.xLock) return;
@@ -1038,6 +1053,7 @@ function addBet(n) {
   mAdd('lifeIn', need);
   audio.playSE('BET', true); // 重ね再生可
   animateMedals(COUNT_MS); // 1枚ずつ減らして表示
+  startBetCT(); // 同時押し対策: 0.1秒間レバーを受け付けない(内部でupdateUI→ランプ演出開始)
   updateUI();
 }
 
@@ -1053,6 +1069,7 @@ function setMaxBet() {
   mAdd('lifeIn', need);
   audio.playSE(max === 1 ? 'BET' : (max === 2 ? 'MAXBET2' : 'MAXBET3')); // ボーナス中は2枚BET音
   animateMedals(COUNT_MS); // 1枚ずつ減らして表示
+  startBetCT(); // 同時押し対策: 0.1秒間レバーを受け付けない(内部でupdateUI→1・2・3を0.05秒間隔で順次点灯)
   updateUI();
 }
 
@@ -1061,6 +1078,7 @@ function setMaxBet() {
    betDelayMs: 自動BETからレバーまでの間隔 (手動/Space=1秒, Auto Mode=0.5秒) */
 function leverOn(betDelayMs = 1000) {
   if (state.gamePhase !== 'idle' || state.betLock || state.payoutLock || state.xLock) return;
+  if (betCtActive()) return; // BET直後のクールタイム中は受け付けない(同時押し対策)
 
   let autoBetDelay = 0;
   if (state.replayPending) {
@@ -1561,7 +1579,9 @@ function xSetRainbow(on) {
 
 /* 疑似リプレイ: 見せかけの1BET/レバー/停止 (メダル・回転数は一切変動しない) */
 function xFakeBet() {
-  el.betLamps.forEach((lamp, i) => lamp.classList.toggle('on', i === 0)); // 1BETランプ表示
+  clearBetLampAnim();
+  state.betLampShown = 1; // 1BETランプ表示
+  renderBetLamps();
 }
 function xFakeLever() {
   el.lever.classList.add('pushed');
@@ -1912,7 +1932,22 @@ function autoNextGame(delayMs) {
       autoNextGame(250);
       return;
     }
-    leverOn(500); // Auto: MAXBET→0.5秒→レバー (リプレイ時はそのままレバー)
+    /* Auto Mode: 状況に応じて自動BETしてからレバーを引く
+       非ボーナス=3BET(MAXBET) / GOGO!CHANCE点灯中で1BET設定ON=1BET / ボーナス中=2BET
+       (BET枚数の判断はbetCapNow()に一元化されている)
+       リプレイ自動BET中(replayPending)はBET不要でそのままレバー。 */
+    if (!state.replayPending && state.bet === 0) {
+      const need = betCapNow();
+      if (state.mochi < need && state.credit < need) {
+        message('メダルが足りません! 貸出ボタンを押してください');
+        autoNextGame(1000); // メダル待ち
+        return;
+      }
+      setMaxBet(); // betCapNow()枚まで一括投入(ボーナス中は2枚・GOGO中1BET設定は1枚)
+      if (state.bet === 0) { autoNextGame(1000); return; } // 投入できなければリトライ
+    }
+    /* BET直後のクールタイム(0.1秒)明けを待ってからレバー */
+    autoSchedule(() => leverOn(500), BET_CT_MS + 30);
   }, delayMs);
 }
 
@@ -1980,9 +2015,11 @@ function updateUI() {
   const bonusTotal = state.counts.bb + state.counts.rb;
   el.dpGosei.textContent = bonusTotal > 0 ? '1/' + (state.counts.total / bonusTotal).toFixed(1) : '1/---';
 
-  // BETランプ
+  // BETランプ (増加時は0.05秒間隔で1つずつ点灯。減少・消灯は即時)
   const dispBet = state.replayPending || state.bet;
-  el.betLamps.forEach((lamp, i) => lamp.classList.toggle('on', dispBet >= i + 1));
+  if (dispBet < state.betLampShown) { clearBetLampAnim(); state.betLampShown = dispBet; }
+  else if (betLampTimer === null && state.betLampShown < dispBet) { animateBetLamps(dispBet); }
+  renderBetLamps();
 
   const idle = state.gamePhase === 'idle' && !state.betLock && !state.payoutLock;
   /* ボーナス中はMAXBETのみ有効(2枚固定)。1BETボタンは無効のまま */
@@ -1992,8 +2029,9 @@ function updateUI() {
   el.btnMaxBet.disabled = betLocked || state.bet >= betCap;
   el.btnRent.disabled = !idle;
   el.btnPayback.disabled = !idle || state.bet > 0 || state.mochi <= 0;
-  /* レバー: BET0では引けない(簡単レバーモードON時のみ0BETでも引ける) */
-  el.lever.classList.toggle('disabled', !idle || state.xLock || !canPullLever());
+  /* レバー: BET0では引けない(簡単レバーモードON時のみ0BETでも引ける)
+     BET直後0.1秒はクールタイムでグレーアウト(同時押し対策) */
+  el.lever.classList.toggle('disabled', !idle || state.xLock || !canPullLever() || betCtActive());
 
   // ストップボタン
   el.stopBtns.forEach((btn, i) => {
@@ -2004,6 +2042,30 @@ function updateUI() {
 
   updateStateLamps();
   renderGraph();
+}
+
+/* ================= BETランプの順次点灯演出 =================
+   MAXBETで1・2・3を同時に光らせず、BET_LAMP_MS(0.05秒)間隔で1つずつ点灯させる。
+   state.betLampShown が「今表示している本数」で、updateUI()内のrenderBetLamps()が描画する。 */
+let betLampTimer = null;
+function clearBetLampAnim() {
+  if (betLampTimer) { clearTimeout(betLampTimer); betLampTimer = null; }
+}
+/* 目標本数へ向けて1本ずつ点灯(増える時のみ演出。減る時=消灯は即時) */
+function animateBetLamps(target) {
+  clearBetLampAnim();
+  if (target <= state.betLampShown) { state.betLampShown = target; renderBetLamps(); return; }
+  const step = () => {
+    betLampTimer = null;
+    if (state.betLampShown >= target) return;
+    state.betLampShown++;
+    renderBetLamps();
+    if (state.betLampShown < target) betLampTimer = setTimeout(step, BET_LAMP_MS);
+  };
+  step(); // 1本目は即時点灯し、以降0.05秒間隔
+}
+function renderBetLamps() {
+  el.betLamps.forEach((lamp, i) => lamp.classList.toggle('on', state.betLampShown >= i + 1));
 }
 
 /* ================= 状態ランプ (Start / Replay / Wait / Insert Medals) =================
@@ -2160,6 +2222,9 @@ function resetData() {
   state.counts = { bb: 0, rb: 0, total: 0, start: 0 };
   state.history = [];
   state.pendingHist = null;
+  clearBetLampAnim();
+  state.betLampShown = 0;
+  state.betCtUntil = 0;
   state.hadBonus = false;   // 連チャン判定もリセット(リセット直後の誤ジャグ連防止)
   state.prevBonusType = null;
   state.renChain = 0;
@@ -2175,7 +2240,8 @@ function resetAll() {
   if (state.gamePhase !== 'idle') { message('リール停止後にリセットできます'); return; }
   Object.assign(state, {
     credit: 0, mochi: 0, investYen: 0, totalIn: 0, totalOut: 0,
-    bet: 0, replayPending: 0, replayLamp: false, inWait: false, bonusFlag: null, smallFlag: null,
+    bet: 0, replayPending: 0, replayLamp: false, inWait: false, betLampShown: 0, betCtUntil: 0,
+    bonusFlag: null, smallFlag: null,
     inBonus: false, bonusType: null, bonusPaid: 0,
     history: [], pendingHist: null, betLock: false, bbHitPlaying: false, payoutLock: false,
     bbWinG: 0, bonusVer: 'NORMAL', bonusCountHold: false, bonusCountFinal: 0,
