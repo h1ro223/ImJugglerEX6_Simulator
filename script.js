@@ -122,6 +122,9 @@ const RB_LIMIT   = 98;     // RB: 98枚を超える払い出しで終了
 /* 「現在のボーナスをスキップ」で即時獲得する枚数(実質手取り)。
    払い出し上限(BB294枚/RB112枚)から、消化に必要なゲーム数×2BET分を差し引いた値。 */
 const BET_LAMP_MS = 50;    // BETランプを1つずつ点灯させる間隔(MaxBet2/3.mp3に同期)
+const END_HIDE_MS = 150;   // RB.mp3 / BBFinish系の再生停止からCOUNT「---」化までの待ち時間
+const STOP_GATE_MS = 600;  // レバー音の再生開始から停止ボタンが押せるようになるまで
+const AUTO_LEVER_MS = 1000;// Auto Mode: BET(またはリプレイ確定)からレバーONまでの間隔
 const BET_CT_MS   = 100;   // BET操作後にレバーを受け付けないクールタイム(同時押し対策)
 const BB_SKIP_PAY = 252;   // 294 - 42 (21G分の2BET)
 const RB_SKIP_PAY = 96;    // 112 - 16 (8G分の2BET)
@@ -343,6 +346,7 @@ const state = {
   autoMode: false,     // Auto Mode
   betLampShown: 0,     // BETランプの点灯本数(1つずつ点灯させる演出用の表示値)
   betCtUntil: 0,       // この時刻(performance.now)までレバー操作を受け付けない(BET直後のCT)
+  stopEnableAt: 0,     // この時刻(performance.now)まで停止ボタンをグレーアウトする
   msgBarOn: false,     // メッセージバー表示 (デフォルトOFF)
   payTarget: 0,        // PAY OUT表示の目標値 (カウントアップ演出用)
   gogoSndEnd: 0,       // GOGOCHANCE.mp3の再生終了時刻 (SE被り防止)
@@ -1125,6 +1129,9 @@ const LEVER_SUB_VOL = 0.22;
 function doLeverAction() {
   el.lever.classList.add('pushed');
   setTimeout(() => el.lever.classList.remove('pushed'), 150);
+  /* レバー音の再生開始からSTOP_GATE_MS(0.6秒)は停止ボタンをグレーアウト */
+  state.stopEnableAt = performance.now() + STOP_GATE_MS;
+  setTimeout(updateUI, STOP_GATE_MS + 10); // ゲート明けにボタンを有効化
   const key = leverSEKey();
   if (key === 'LEVERSP') {
     /* 軍艦マーチverの節目: LeverSPを主役にしつつ、通常Leverも音量を絞って同時再生 */
@@ -1287,6 +1294,7 @@ function startGame() {
 /* --- ストップボタン --- */
 function pressStop(i) {
   if (state.gamePhase !== 'spinning' || state.xLock) return;
+  if (performance.now() < state.stopEnableAt) return; // レバー後0.6秒は停止操作を受け付けない
   /* 実機同様、停止操作は0.15秒間隔でしか受け付けない(十字キー等の同時押し防止) */
   const nowT = performance.now();
   if (nowT - state.lastStopPressAt < 150) return;
@@ -1778,7 +1786,10 @@ function endBonus(payoutSndMs = 0) {
   state.bonusCountFinal = got;
   el.topBanner.classList.remove('bonus-flash', 'x-rainbow');
   message(`${type === 'BB' ? 'BIG' : 'REGULAR'} BONUS 終了! ${got}枚獲得!`);
+  let hidden = false;
   const hideCount = () => {
+    if (hidden) return; // 二重呼び出し防止
+    hidden = true;
     state.bonusCountHold = false;
     state.bonusCountFinal = 0;
     disp.bonus = 0;
@@ -1794,17 +1805,19 @@ function endBonus(payoutSndMs = 0) {
     saveGame();
     updateUI();
   };
-  /* 最終ゲーム分のカウントアップが表示しきるまでの時間 */
-  const countUpMs = COUNT_MS * 14 + 100;
   /* BBはBBFinish.mp3が鳴り終わるまでMAXBET/レバー/停止ボタン無効 */
   if (type === 'BB') state.betLock = true;
   /* 最後のGetGrape14.mp3が停止した瞬間にBB.mp3/RB.mp3を停止 */
   setTimeout(() => {
     audio.stopBGM();
-    if (type === 'RB') setBonusBlink('RB', false); /* RB BGM停止と同時に点滅停止→常時点灯 */
+    if (type === 'RB') {
+      setBonusBlink('RB', false); /* RB BGM停止と同時に点滅停止→常時点灯 */
+      /* RB.mp3の再生停止からEND_HIDE_MS(0.15秒)後にCOUNTを「---」に */
+      setTimeout(hideCount, END_HIDE_MS);
+    }
     if (type === 'BB') {
       /* BB BGM停止から0.1秒後にバージョン対応のFinishを再生 →
-         再生終了+1秒後にCOUNT表示を消す */
+         再生終了+END_HIDE_MS(0.15秒)後にCOUNT表示を消す */
       const wasX2 = state.bonusVer === 'X' && state.xMode === 2;
       const finKey = wasX2 ? 'BBFINISHX2' : (BB_VERS[state.bonusVer] || BB_VERS.NORMAL).fin;
       state.xMode = 0;
@@ -1824,13 +1837,11 @@ function endBonus(payoutSndMs = 0) {
           setBonusBlink('BB', false); /* BBFinish再生終了と同時に点滅停止→常時点灯 */
           state.betLock = false;
           updateUI();
-          setTimeout(hideCount, 1000);
+          setTimeout(hideCount, END_HIDE_MS);
         });
       }, 100);
     }
   }, Math.max(0, payoutSndMs));
-  /* RBは112になった瞬間から0.5秒後にCOUNT表示を消す */
-  if (type === 'RB') setTimeout(hideCount, countUpMs + 500);
 }
 
 /* --- 貸出 / 精算 --- */
@@ -1946,8 +1957,8 @@ function autoNextGame(delayMs) {
       setMaxBet(); // betCapNow()枚まで一括投入(ボーナス中は2枚・GOGO中1BET設定は1枚)
       if (state.bet === 0) { autoNextGame(1000); return; } // 投入できなければリトライ
     }
-    /* BET直後のクールタイム(0.1秒)明けを待ってからレバー */
-    autoSchedule(() => leverOn(500), BET_CT_MS + 30);
+    /* BET(リプレイ成立時は自動BET確定)からAUTO_LEVER_MS(1秒)後にレバーON */
+    autoSchedule(() => leverOn(0), AUTO_LEVER_MS);
   }, delayMs);
 }
 
@@ -2033,9 +2044,10 @@ function updateUI() {
      BET直後0.1秒はクールタイムでグレーアウト(同時押し対策) */
   el.lever.classList.toggle('disabled', !idle || state.xLock || !canPullLever() || betCtActive());
 
-  // ストップボタン
+  // ストップボタン (レバー音の再生開始から0.6秒間はグレーアウト)
+  const stopGateOpen = performance.now() >= state.stopEnableAt;
   el.stopBtns.forEach((btn, i) => {
-    const canStop = state.gamePhase === 'spinning' && reels[i] && reels[i].mode === 'spin';
+    const canStop = stopGateOpen && state.gamePhase === 'spinning' && reels[i] && reels[i].mode === 'spin';
     btn.disabled = !canStop;
     btn.classList.toggle('active', canStop);
   });
@@ -2076,7 +2088,9 @@ function renderBetLamps() {
                      点灯を維持**し、その停止で再びリプレイが揃えば点灯継続、
                      揃わなければそこで消灯する(実機準拠)。回転中も消灯しない。 */
 function updateStateLamps() {
-  const waitingLever = state.gamePhase === 'idle' && !state.xLock;
+  /* ボーナス終了後のCOUNT表示中(bonusCountHold)は「次ゲーム待ち」ではないため、
+     Insert Medalsの点滅・Startの点灯はCOUNTが「---」になるのと同時に開始する */
+  const waitingLever = state.gamePhase === 'idle' && !state.xLock && !state.bonusCountHold;
   const hasBet = (state.bet > 0 || state.replayPending > 0);
 
   el.lampStart.classList.toggle('on', waitingLever && hasBet);
