@@ -650,8 +650,9 @@ function payoutFor(wins, bet, cherryUnit) {
   for (const w of wins) {
     switch (w.role) {
       case 'GRAPE':
-        /* ブドウが複数ラインで同時成立しても払い出しは1回分(本家準拠) */
-        if (!grapePaid) { total += (bet === 3 ? 8 : 14); grapePaid = true; }
+        /* ブドウが複数ラインで同時成立しても払い出しは1回分(本家準拠)
+           3BET=8枚 / 2BET=14枚 / 1BET=8枚 */
+        if (!grapePaid) { total += (bet === 2 ? 14 : 8); grapePaid = true; }
         break;
       case 'BELL':   total += 14; break;
       case 'CLOWN':  total += 10; break;
@@ -2942,9 +2943,8 @@ function bindEvents() {
   $('soundOverlay').addEventListener('click', e => { if (e.target === $('soundOverlay')) { srStop(); $('soundOverlay').hidden = true; } });
 
   // キーボード操作 (PC)
+  /* ストップ操作は [←][↓][→] のみ (数字キー1〜3は廃止。[1]は1BET専用に) */
   const keyMap = {
-    '1': 0, '2': 1, '3': 2,
-    'j': 0, 'k': 1, 'l': 2,
     'arrowleft': 0, 'arrowdown': 1, 'arrowright': 2
   };
   document.addEventListener('keydown', e => {
@@ -2961,14 +2961,9 @@ function bindEvents() {
     audio.ensure();
     const k = e.key.toLowerCase();
     if (k === ' ' || k === 'enter') { e.preventDefault(); leverOn(); }
-    else if (k in keyMap) {
-      e.preventDefault();
-      /* [1]は回転中=第1ストップ / 非回転中=1BET */
-      if (k === '1' && state.gamePhase !== 'spinning') addBet(1);
-      else pressStop(keyMap[k]);
-    }
-    else if (k === 'm' || k === 'shift') setMaxBet();
-    else if (k === 'b') addBet(1);
+    else if (k in keyMap) { e.preventDefault(); pressStop(keyMap[k]); } // [←][↓][→]ストップ
+    else if (k === 'arrowup') { e.preventDefault(); setMaxBet(); }      // [↑]MAXBET
+    else if (k === '1') addBet(1);                                      // [1]1BET
     else if (k === 'insert') rentCoins();
     else if (k === 'a') setAutoMode(!state.autoMode);
   });
