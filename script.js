@@ -147,7 +147,7 @@ const STOP_GATE_MS = 600;  // レバー音の再生開始から停止ボタン�
 const STOP_MIN_MS  = 150;  // 停止操作の最小間隔(十字キー等の同時押し防止)
 const AUTO_LEVER_MS = 1000;// Auto Mode: BET(またはリプレイ確定)からレバーONまでの間隔
 const AUTO_RENT_MS  = 1000;// Auto Mode: 自動貸出からBETまでの間隔
-const AUTO_SPEEDS   = [1, 2, 3]; // オート速度の選択肢
+const AUTO_SPEEDS   = [1, 2, 3, 4, 5]; // オート速度の選択肢
 const BET_CT_MS   = 100;   // BET操作後にレバーを受け付けないクールタイム(同時押し対策)
 const BB_SKIP_PAY = 252;   // 294 - 42 (21G分の2BET)
 const RB_SKIP_PAY = 96;    // 112 - 16 (8G分の2BET)
@@ -608,7 +608,7 @@ const audio = {
   get1Loop(coins) {
     if (!state.seOn) return;
     const n = Math.max(0, coins - 1);
-    const INTERVAL = COUNT_MS; // Get1.mp3ループ間隔(数字カウントと同期)
+    const INTERVAL = aMs(COUNT_MS); // Get1.mp3ループ間隔(数字カウントと同期・オート倍速追従)
     let i = 0;
     const tick = () => {
       if (i < n) { this.playSE('GET1', true); i++; setTimeout(tick, INTERVAL); }
@@ -1063,9 +1063,10 @@ function canPullLever() {
 
 /* BET操作直後のクールタイム開始(同時押しで即レバーが入るのを防ぐ) */
 function startBetCT() {
-  state.betCtUntil = performance.now() + BET_CT_MS;
+  const ct = aMs(BET_CT_MS); // オート倍速に追従
+  state.betCtUntil = performance.now() + ct;
   updateUI();
-  setTimeout(updateUI, BET_CT_MS + 10); // CT明けにレバーのグレーアウトを解除
+  setTimeout(updateUI, ct + 10); // CT明けにレバーのグレーアウトを解除
 }
 /* クールタイム中か */
 function betCtActive() {
@@ -1084,7 +1085,7 @@ function addBet(n) {
   state.totalIn += need;
   mAdd('lifeIn', need);
   audio.playSE('BET', true); // 重ね再生可
-  animateMedals(COUNT_MS); // 1枚ずつ減らして表示
+  animateMedals(aMs(COUNT_MS)); // 1枚ずつ減らして表示
   startBetCT(); // 同時押し対策: 0.1秒間レバーを受け付けない(内部でupdateUI→ランプ演出開始)
   updateUI();
 }
@@ -1100,7 +1101,7 @@ function setMaxBet() {
   state.totalIn += need;
   mAdd('lifeIn', need);
   audio.playSE(max === 1 ? 'BET' : (max === 2 ? 'MAXBET2' : 'MAXBET3')); // ボーナス中は2枚BET音
-  animateMedals(COUNT_MS); // 1枚ずつ減らして表示
+  animateMedals(aMs(COUNT_MS)); // 1枚ずつ減らして表示
   startBetCT(); // 同時押し対策: 0.1秒間レバーを受け付けない(内部でupdateUI→1・2・3を0.05秒間隔で順次点灯)
   updateUI();
 }
@@ -1129,7 +1130,7 @@ function leverOn(betDelayMs = 1000) {
     state.totalIn += auto;
     mAdd('lifeIn', auto);
     audio.playSE(auto === 1 ? 'BET' : (auto === 2 ? 'MAXBET2' : 'MAXBET3'));
-    animateMedals(COUNT_MS);
+    animateMedals(aMs(COUNT_MS));
     autoBetDelay = betDelayMs;
   }
 
@@ -1445,15 +1446,21 @@ function resolveGame() {
         if (gogoWait > 0) setTimeout(() => audio.playSE(key), gogoWait);
         else audio.playSE(key);
         sndMs = audio.duration(key, 900);
-        animateMedals(COUNT_MS, gogoWait); // 1枚ずつ加算表示(COUNT_MS間隔)
+        animateMedals(aMs(COUNT_MS), gogoWait); // 1枚ずつ加算表示(オート倍速追従)
       } else {
         if (gogoWait > 0) setTimeout(() => audio.get1Loop(pay), gogoWait);
         else audio.get1Loop(pay); // ピエロ・チェリー等: (枚数-1)回ループ後にGet1Finish
-        sndMs = Math.max(0, pay - 1) * COUNT_MS + audio.duration('GET1FIN', 500);
-        animateMedals(COUNT_MS, gogoWait); // Get1.mp3のループに同期して加算表示
+        sndMs = Math.max(0, pay - 1) * aMs(COUNT_MS) + audio.duration('GET1FIN', 500);
+        animateMedals(aMs(COUNT_MS), gogoWait); // Get1.mp3のループに同期して加算表示
       }
-      /* Get系mp3の再生が終わるまで操作不可(Lever音との被り防止) */
+      /* Get系mp3の再生が終わるまで操作不可(Lever音との被り防止)
+         ※オート倍速中は音の再生完了を待たずに次ゲームへ進む(音は鳴らしっぱなしでOK)。
+           カウントアップが終わる時間は最低限確保する。 */
       payoutSndMs = gogoWait + sndMs;
+      if (autoRate() > 1) {
+        const countMs = gogoWait + Math.max(0, pay) * aMs(COUNT_MS);
+        payoutSndMs = Math.min(payoutSndMs, countMs);
+      }
       if (state.seOn && payoutSndMs > 0) {
         state.payoutLock = true;
         setTimeout(() => { state.payoutLock = false; updateUI(); }, payoutSndMs);
@@ -1843,7 +1850,7 @@ function endBonus(payoutSndMs = 0) {
     if (type === 'RB') {
       setBonusBlink('RB', false); /* RB BGM停止と同時に点滅停止→常時点灯 */
       /* RB.mp3の再生停止からEND_HIDE_MS(0.15秒)後にCOUNTを「---」に */
-      setTimeout(hideCount, END_HIDE_MS);
+      setTimeout(hideCount, aMs(END_HIDE_MS));
     }
     if (type === 'BB') {
       /* BB BGM停止から0.1秒後にバージョン対応のFinishを再生 →
@@ -1867,7 +1874,7 @@ function endBonus(payoutSndMs = 0) {
           setBonusBlink('BB', false); /* BBFinish再生終了と同時に点滅停止→常時点灯 */
           state.betLock = false;
           updateUI();
-          setTimeout(hideCount, END_HIDE_MS);
+          setTimeout(hideCount, aMs(END_HIDE_MS));
         });
       }, 100);
     }
@@ -2124,7 +2131,7 @@ function animateBetLamps(target) {
     if (state.betLampShown >= target) return;
     state.betLampShown++;
     renderBetLamps();
-    if (state.betLampShown < target) betLampTimer = setTimeout(step, BET_LAMP_MS);
+    if (state.betLampShown < target) betLampTimer = setTimeout(step, aMs(BET_LAMP_MS));
   };
   step(); // 1本目は即時点灯し、以降0.05秒間隔
 }
