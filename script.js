@@ -106,6 +106,16 @@ const WAIT_MS    = 4100;   // ゲーム間ウェイト(実機は4.1秒規定 410
    待機中に G,O,G,O → 次プレイでペカ確定(通常) / G,O,G,O,7,7,7 → レインボー(中段チェリーBB)確定
    点灯タイミングはいつも通り先ペカ15%/後ペカ85%の抽選 */
 let secretBuf = '';
+/* 隠しコマンド入力を「リセットしない」キー。
+   G,O,G,O(,7,7,7)と入力した後にBET→レバーという操作をしても
+   コマンドが消えないよう、BET系・レバー系・修飾キーを温存する。 */
+const SECRET_KEEP_KEYS = new Set([
+  ' ', 'enter',        // レバー
+  'arrowup',           // MAXBET
+  '1',                 // 1BET
+  'insert',            // 貸出
+  'shift', 'control', 'alt', 'meta', 'capslock' // 修飾キー(誤爆防止)
+]);
 function consumeSecretCommand() {
   let mode = null;
   if (secretBuf.endsWith('gogo777')) mode = 'rare';
@@ -2954,7 +2964,7 @@ function bindEvents() {
       const kk = e.key.toLowerCase();
       if (state.gamePhase === 'idle' && !state.inBonus) {
         if (kk === 'g' || kk === 'o' || kk === '7') secretBuf = (secretBuf + kk).slice(-7);
-        else if (kk !== ' ' && kk !== 'enter') secretBuf = '';
+        else if (!SECRET_KEEP_KEYS.has(kk)) secretBuf = '';
       }
     }
     if (!el.modalOverlay.hidden) return;
