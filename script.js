@@ -99,7 +99,17 @@ const CELL_GAP_RATIO = 0.10; // 小役と小役の間の隙間 (コマ高さに�
 const PEEK_RATIO     = 0.24; // 上下の隣コマを覗かせる量 (コマ高さに対する割合)
 const REV_MS     = 780;    // 1回転にかかる時間(ms) 約77rpm
 const SPEED      = KOMA / REV_MS;  // コマ/ms
-const curSpeed   = () => SPEED * state.reelSpeed; // リール回転速度倍率を適用
+/* ---- オート倍速 ----
+   「オート倍速モード」ON かつ Auto Mode 動作中のときだけ、待機時間を 1/倍率 に短縮し
+   リールの回転速度を倍率ぶん速くする。OFF時は常に1倍(=従来と完全に同じ挙動)。
+   倍速モードON中はリール回転速度設定を1.0固定にする(UI側でも0.25/0.5をグレーアウト)。 */
+function autoRate() {
+  return (state.autoTurbo && state.autoMode) ? state.autoSpeed : 1;
+}
+/* 待機時間(ms)を倍速に合わせて短縮する */
+function aMs(ms) { return ms / autoRate(); }
+/* リール回転速度: 倍速モードON中はreelSpeedを1.0固定として扱う */
+const curSpeed   = () => SPEED * (state.autoTurbo ? 1 : state.reelSpeed) * autoRate();
 const DECEL_KOMA = 1.05;   // (旧減速演出用・現在は未使用。ガチッと即停止に変更済み)
 const WAIT_MS    = 4100;   // ゲーム間ウェイト(実機は4.1秒規定 4100　現在は4.1秒 4100)
 /* 隠しコマンド (PC限定・サイレント発動)
@@ -134,7 +144,10 @@ const RB_LIMIT   = 98;     // RB: 98枚を超える払い出しで終了
 const BET_LAMP_MS = 50;    // BETランプを1つずつ点灯させる間隔(MaxBet2/3.mp3に同期)
 const END_HIDE_MS = 150;   // RB.mp3 / BBFinish系の再生停止からCOUNT「---」化までの待ち時間
 const STOP_GATE_MS = 600;  // レバー音の再生開始から停止ボタンが押せるようになるまで
+const STOP_MIN_MS  = 150;  // 停止操作の最小間隔(十字キー等の同時押し防止)
 const AUTO_LEVER_MS = 1000;// Auto Mode: BET(またはリプレイ確定)からレバーONまでの間隔
+const AUTO_RENT_MS  = 1000;// Auto Mode: 自動貸出からBETまでの間隔
+const AUTO_SPEEDS   = [1, 2, 3]; // オート速度の選択肢
 const BET_CT_MS   = 100;   // BET操作後にレバーを受け付けないクールタイム(同時押し対策)
 const BB_SKIP_PAY = 252;   // 294 - 42 (21G分の2BET)
 const RB_SKIP_PAY = 96;    // 112 - 16 (8G分の2BET)
@@ -353,6 +366,8 @@ const state = {
   kaishuYen: 0,        // 回収額(精算で円に変換した合計)
   forceBonus: false,   // 次ゲームでGOGO!CHANCE点灯(1回)
   reelSpeed: 1,        // リール回転速度倍率 (0.25 / 0.5 / 1)
+  autoTurbo: false,    // オート倍速モード (ONでオート速度x2/x3が選択可・リール速度は1.0固定)
+  autoSpeed: 1,        // オート速度 (1 / 2 / 3) ※autoTurbo中のみ有効
   autoMode: false,     // Auto Mode
   betLampShown: 0,     // BETランプの点灯本数(1つずつ点灯させる演出用の表示値)
   betCtUntil: 0,       // この時刻(performance.now)までレバー操作を受け付けない(BET直後のCT)
@@ -887,8 +902,10 @@ class Reel {
   startSpin(delay) {
     this.mode = 'spin';
     this.v = 0;
-    this.accelUntil = performance.now() + 220 + delay;
+    /* 加速時間・回転開始ディレイもオート倍速に追従させる */
+    this.accelUntil = performance.now() + aMs(220) + delay;
     this.spinDelay = performance.now() + delay;
+    this.accelMs = aMs(180);
   }
   requestStop() {
     if (this.mode !== 'spin' || this.v < curSpeed() * 0.95) return false;
@@ -909,7 +926,7 @@ class Reel {
       // 加速
       const V = curSpeed();
       if (now < this.accelUntil) {
-        this.v = Math.min(V, this.v + V * dt / 180);
+        this.v = Math.min(V, this.v + V * dt / (this.accelMs || 180));
       } else {
         this.v = V;
       }
@@ -1140,9 +1157,10 @@ const LEVER_SUB_VOL = 0.22;
 function doLeverAction() {
   el.lever.classList.add('pushed');
   setTimeout(() => el.lever.classList.remove('pushed'), 150);
-  /* レバー音の再生開始からSTOP_GATE_MS(0.6秒)は停止ボタンをグレーアウト */
-  state.stopEnableAt = performance.now() + STOP_GATE_MS;
-  setTimeout(updateUI, STOP_GATE_MS + 10); // ゲート明けにボタンを有効化
+  /* レバー音の再生開始からSTOP_GATE_MS(0.6秒)は停止ボタンをグレーアウト(倍速時は短縮) */
+  const gate = aMs(STOP_GATE_MS);
+  state.stopEnableAt = performance.now() + gate;
+  setTimeout(updateUI, gate + 10); // ゲート明けにボタンを有効化
   const key = leverSEKey();
   if (key === 'LEVERSP') {
     /* 軍艦マーチverの節目: LeverSPを主役にしつつ、通常Leverも音量を絞って同時再生 */
@@ -1155,7 +1173,7 @@ function doLeverAction() {
 
 function fireLever() {
   const now = performance.now();
-  const waitRemain = state.lastSpinStart + WAIT_MS - now;
+  const waitRemain = state.lastSpinStart + aMs(WAIT_MS) - now;
 
   state.gamePhase = 'spinning';
 
@@ -1288,7 +1306,7 @@ function startGame() {
   }
 
   /* リール始動 */
-  reels.forEach((r, i) => r.startSpin(i * 70));
+  reels.forEach((r, i) => r.startSpin(aMs(i * 70)));
   if (state.autoMode) scheduleAutoStops();
   if (state.inBonus) {
     const limit = state.bonusType === 'BB' ? (state.bonusVer === 'X' && state.xMode === 2 ? 336 - 14 : BB_LIMIT) : RB_LIMIT;
@@ -1306,9 +1324,10 @@ function startGame() {
 function pressStop(i) {
   if (state.gamePhase !== 'spinning' || state.xLock) return;
   if (performance.now() < state.stopEnableAt) return; // レバー後0.6秒は停止操作を受け付けない
-  /* 実機同様、停止操作は0.15秒間隔でしか受け付けない(十字キー等の同時押し防止) */
+  /* 実機同様、停止操作は0.15秒間隔でしか受け付けない(十字キー等の同時押し防止)
+     ※オート倍速中は停止間隔自体も短くなるため、このガードも倍速に追従させる */
   const nowT = performance.now();
-  if (nowT - state.lastStopPressAt < 150) return;
+  if (nowT - state.lastStopPressAt < aMs(STOP_MIN_MS)) return;
   const r = reels[i];
   if (!r.requestStop()) return;
   state.lastStopPressAt = nowT;
@@ -1384,7 +1403,7 @@ function onReelStopped(idx, pos) {
     if (tenpai) audio.playSE('STOP7');
   }
   if (state.reelsStopped === 3 && state.cols.every(Boolean)) {
-    setTimeout(resolveGame, 120);
+    setTimeout(resolveGame, aMs(120)); // 第3停止→結果判定の間(オート倍速に追従)
   }
 }
 
@@ -1476,8 +1495,8 @@ function resolveGame() {
   state.gamePhase = 'idle';
   saveGame();
   updateUI();
-  /* Auto Mode: 払い出し音終了(+1秒)後に次ゲームへ */
-  if (state.autoMode) autoNextGame(payoutSndMs + 1000);
+  /* Auto Mode: 払い出し音終了(+1秒)後に次ゲームへ(倍速時は短縮) */
+  if (state.autoMode) autoNextGame(aMs(payoutSndMs + 1000));
 }
 
 function addPayout(n) {
@@ -1902,32 +1921,44 @@ function autoClearTimers() {
 /* レバーON後: Lever.mp3終了と同時に第1停止(レバーから約0.5秒) → 順次第2・第3停止 */
 function scheduleAutoStops() {
   const base = audio.duration('LEVER', 500); // Lever.mp3の長さ=約0.5秒
-  autoSchedule(() => autoPress(0), base);
+  /* 第1停止は「停止ゲート明け」以降でないと弾かれるため、ゲート時間を下回らないようにする */
+  autoSchedule(() => autoPress(0), Math.max(aMs(base), aMs(STOP_GATE_MS + 30)));
 }
 function autoPress(i) {
   if (state.gamePhase !== 'spinning') return;
+  /* 停止ゲート(レバー後STOP_GATE_MS)中はpressStopが弾かれるため、明けるまで待つ。
+     これが無いと第1停止が空振りしてリールが止まらなくなる。 */
+  if (performance.now() < state.stopEnableAt) {
+    autoSchedule(() => autoPress(i), aMs(40));
+    return;
+  }
   const r = reels[i];
   /* リールが定速に達するまで待つ */
   if (r.mode !== 'spin' || r.v < curSpeed() * 0.95) {
-    autoSchedule(() => autoPress(i), 60);
+    autoSchedule(() => autoPress(i), aMs(60));
     return;
   }
   /* GOGO!CHANCE中は7(RBは右BAR)を引き込める瞬間までポーリングして押す(人間の目押し風) */
   if (!bonusAimOk(i, r.pos)) {
     if (!r.autoAimStart) r.autoAimStart = performance.now();
     if (performance.now() - r.autoAimStart < 5000) {
-      autoSchedule(() => autoPress(i), 30);
+      autoSchedule(() => autoPress(i), aMs(30));
       return;
     }
     /* 5秒狙えなければ諦めて押す(保険・通常発生しない) */
   }
   r.autoAimStart = 0;
+  const before = state.stopsInitiated;
   pressStop(i);
+  if (state.stopsInitiated === before) { // 何らかの理由で弾かれたら少し待って再試行
+    autoSchedule(() => autoPress(i), aMs(40));
+    return;
+  }
   autoSchedule(() => {
     el.stopBtns[i].classList.remove('pushed');
     if (i === 2) onStopRelease(); // 第3停止ボタンを離す(後ペカ発生タイミング)
-  }, 180);
-  if (i < 2) autoSchedule(() => autoPress(i + 1), 250); // 次のボタンまで0.25秒
+  }, aMs(180));
+  if (i < 2) autoSchedule(() => autoPress(i + 1), aMs(250)); // 次のボタンまで0.25秒
 }
 /* 次ゲームへ (betLock/payoutLock中はリトライ) */
 /* Auto ModeのON/OFF一元化 (設定チェックボックス・[A]キー共通) */
@@ -1938,20 +1969,22 @@ function setAutoMode(on) {
   if (on) {
     closeModal();
     /* 回転中(まだ1つも停止していない)にONにした場合はこのゲームから自動停止 */
-    if (state.gamePhase === 'spinning' && state.cols.every(c => c === null)) autoSchedule(() => autoPress(0), 300);
-    else autoNextGame(600);
+    if (state.gamePhase === 'spinning' && state.cols.every(c => c === null)) autoSchedule(() => autoPress(0), aMs(300));
+    else autoNextGame(aMs(600));
   } else {
     autoClearTimers();
   }
 }
 function syncAutoBtn() {
-  el.dpAuto.classList.toggle('on', state.autoMode); // ON時は緑発光のみ・表示は常にAuto Mode
+  el.dpAuto.classList.toggle('on', state.autoMode);
+  /* オート倍速モードON時のみ倍率を併記 (Auto x1 / x2 / x3)。OFF時は「Auto」固定 */
+  el.dpAuto.textContent = state.autoTurbo ? `Auto x${state.autoSpeed}` : 'Auto';
 }
 
 function autoNextGame(delayMs) {
   autoSchedule(() => {
     if (state.gamePhase !== 'idle' || state.betLock || state.payoutLock || state.xLock || !el.modalOverlay.hidden) {
-      autoNextGame(250);
+      autoNextGame(aMs(250));
       return;
     }
     /* Auto Mode: 状況に応じて自動BETしてからレバーを引く
@@ -1959,17 +1992,25 @@ function autoNextGame(delayMs) {
        (BET枚数の判断はbetCapNow()に一元化されている)
        リプレイ自動BET中(replayPending)はBET不要でそのままレバー。 */
     if (!state.replayPending && state.bet === 0) {
-      const need = betCapNow();
-      if (state.mochi < need && state.credit < need) {
-        message('メダルが足りません! 貸出ボタンを押してください');
-        autoNextGame(1000); // メダル待ち
+      const need = betCapNow(); // 非ボーナス=3 / GOGO中1BET設定=1 / ボーナス中=2
+      /* 必要枚数に満たなければ自動で1回貸出(50枚)してからBETする。
+         非ボーナス(3BET)なら2枚以下、GOGO中1BET設定なら0枚、ボーナス中(2BET)なら1枚以下が対象。 */
+      if (state.mochi < need) {
+        rentCoins();
+        if (state.mochi < need) { autoNextGame(aMs(1000)); return; } // 貸出できなければリトライ
+        /* 貸出からBETまで1秒待つ */
+        autoSchedule(() => {
+          setMaxBet();
+          if (state.bet === 0) { autoNextGame(aMs(1000)); return; }
+          autoSchedule(() => leverOn(0), aMs(AUTO_LEVER_MS));
+        }, aMs(AUTO_RENT_MS));
         return;
       }
       setMaxBet(); // betCapNow()枚まで一括投入(ボーナス中は2枚・GOGO中1BET設定は1枚)
-      if (state.bet === 0) { autoNextGame(1000); return; } // 投入できなければリトライ
+      if (state.bet === 0) { autoNextGame(aMs(1000)); return; } // 投入できなければリトライ
     }
     /* BET(リプレイ成立時は自動BET確定)からAUTO_LEVER_MS(1秒)後にレバーON */
-    autoSchedule(() => leverOn(0), AUTO_LEVER_MS);
+    autoSchedule(() => leverOn(0), aMs(AUTO_LEVER_MS));
   }, delayMs);
 }
 
@@ -2179,7 +2220,7 @@ function saveGame() {
       replayPending: state.replayPending,
       history: state.history, pendingHist: state.pendingHist,
       rareLamp: state.rareLamp, kaishuYen: state.kaishuYen,
-      reelSpeed: state.reelSpeed, msgBarOn: state.msgBarOn,
+      reelSpeed: state.reelSpeed, autoTurbo: state.autoTurbo, autoSpeed: state.autoSpeed, msgBarOn: state.msgBarOn,
       replayLamp: state.replayLamp, gogo1Bet: state.gogo1Bet, easyLever: state.easyLever,
       bgmOn: state.bgmOn, seOn: state.seOn,
       bgmVol: state.bgmVol, seVol: state.seVol
@@ -2232,6 +2273,9 @@ function loadGame() {
     state.pendingHist = d.pendingHist || null;
     state.rareLamp = !!d.rareLamp;
     state.reelSpeed = [0.25, 0.5, 1].includes(d.reelSpeed) ? d.reelSpeed : (d.easyMode ? 0.5 : 1); // 旧簡単モードは0.5に移行
+    state.autoTurbo = !!d.autoTurbo;
+    state.autoSpeed = AUTO_SPEEDS.includes(d.autoSpeed) ? d.autoSpeed : 1;
+    if (state.autoTurbo) state.reelSpeed = 1; // 倍速モード中はリール速度1.0固定
 
     state.msgBarOn = d.msgBarOn === true; // デフォルトOFF
     state.bgmOn = d.bgmOn !== false && d.sound !== false;
@@ -2421,8 +2465,19 @@ function refreshSettingBtns() {
     : state.customProb ? '現在:カスタム' : `現在:設定${state.setting}`;
 }
 function refreshSpeedBtns() {
+  /* リール回転速度: オート倍速モードON中は1.0固定 (0.25/0.5はグレーアウト) */
   document.querySelectorAll('.speed-btn').forEach(btn => {
-    btn.classList.toggle('selected', Number(btn.dataset.v) === state.reelSpeed);
+    const v = Number(btn.dataset.v);
+    btn.classList.toggle('selected', !state.autoTurbo && v === state.reelSpeed || state.autoTurbo && v === 1);
+    btn.disabled = state.autoTurbo && v !== 1;
+  });
+  /* オート速度: オート倍速モードOFF中は選択不可 (x1.0固定) */
+  const chk = $('chkAutoTurbo');
+  if (chk) chk.checked = state.autoTurbo;
+  document.querySelectorAll('.aspeed-btn').forEach(btn => {
+    const v = Number(btn.dataset.v);
+    btn.classList.toggle('selected', state.autoTurbo ? v === state.autoSpeed : v === 1);
+    btn.disabled = !state.autoTurbo;
   });
 }
 
@@ -2463,9 +2518,30 @@ function bindEvents() {
 
   document.querySelectorAll('.speed-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+      if (state.autoTurbo) return; // 倍速モード中はリール速度1.0固定
       state.reelSpeed = Number(btn.dataset.v);
       refreshSpeedBtns();
       saveGame();
+    });
+  });
+  /* --- オート倍速モード --- */
+  $('chkAutoTurbo').addEventListener('change', () => {
+    state.autoTurbo = $('chkAutoTurbo').checked;
+    if (state.autoTurbo) state.reelSpeed = 1; // 倍速モード中はリール速度1.0固定
+    else state.autoSpeed = 1;                 // OFFに戻したらオート速度もx1.0へ
+    refreshSpeedBtns();
+    syncAutoBtn();
+    saveGame();
+    message(state.autoTurbo ? `オート倍速モード ON (x${state.autoSpeed})` : 'オート倍速モード OFF');
+  });
+  document.querySelectorAll('.aspeed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!state.autoTurbo) return;
+      state.autoSpeed = Number(btn.dataset.v);
+      refreshSpeedBtns();
+      syncAutoBtn();
+      saveGame();
+      message(`オート速度 x${state.autoSpeed}`);
     });
   });
   el.chkMsgBar.addEventListener('change', () => { state.msgBarOn = el.chkMsgBar.checked; applyMsgBar(); saveGame(); });

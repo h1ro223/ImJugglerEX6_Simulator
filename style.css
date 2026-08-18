@@ -384,14 +384,18 @@ html, body {
 .modal-section { margin-bottom: 14px; }
 .modal-section h3 { font-size: 13px; color: #cdd; border-bottom: 1px solid #444; padding-bottom: 4px; margin-bottom: 8px; }
 .current-setting { float: right; font-size: 11px; color: #7fd4ff; }
-#settingBtns, #speedBtns { display: flex; gap: 6px; }
+#settingBtns, #speedBtns, #aspeedBtns { display: flex; gap: 6px; }
 #speedBtns { margin-bottom: 4px; }
-.setting-btn, .speed-btn {
+#aspeedBtns { margin-bottom: 8px; }
+.setting-btn, .speed-btn, .aspeed-btn {
   flex: 1; padding: 10px 0; border-radius: 8px; font-size: 15px; font-weight: bold;
   background: #33333c; color: #ccc; border: 1px solid #555; cursor: pointer;
 }
-.speed-btn { font-size: 13px; padding: 8px 0; }
-.setting-btn.selected, .speed-btn.selected { background: linear-gradient(180deg,#ffb62e,#d17700); color: #402800; border-color: #ffda8a; box-shadow: 0 0 10px rgba(255,182,46,.6); }
+.speed-btn, .aspeed-btn { font-size: 13px; padding: 8px 0; }
+.setting-btn.selected, .speed-btn.selected, .aspeed-btn.selected { background: linear-gradient(180deg,#ffb62e,#d17700); color: #402800; border-color: #ffda8a; box-shadow: 0 0 10px rgba(255,182,46,.6); }
+/* 無効化されたボタン(オート倍速モードON時の×0.25/×0.5、OFF時のオート速度)はグレーアウト */
+.speed-btn:disabled, .aspeed-btn:disabled { opacity: .32; cursor: not-allowed; filter: grayscale(.7); }
+.speed-btn:disabled.selected, .aspeed-btn:disabled.selected { opacity: .5; }
 .toggle-row {
   display: flex; justify-content: space-between; align-items: center;
   font-size: 13px; padding: 8px 2px; cursor: pointer; color: #eee;

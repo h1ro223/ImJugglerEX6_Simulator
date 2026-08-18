@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>アイムジャグラーEX (6号機) v3.4</title>
+<title>アイムジャグラーEX (6号機) v3.5</title>
 <link rel="icon" type="image/png" href="./icon/gogo.png">
 <link rel="apple-touch-icon" href="./icon/gogo.png">
 <meta name="theme-color" content="#101014">
@@ -16,8 +16,8 @@
   <header id="dataPanel">
     <div class="dp-top">
       <span class="dp-unit">0001番台</span>
-      <span class="dp-name">アイムジャグラーEX (6号機) v3.4</span>
-      <button class="dp-auto" id="dpAuto">Auto Mode</button>
+      <span class="dp-name">アイムジャグラーEX (6号機) v3.5</span>
+      <button class="dp-auto" id="dpAuto">Auto</button>
       <button class="dp-vol" id="btnVolPop">♪</button>
     </div>
     <div class="dp-body">
@@ -181,6 +181,15 @@
       </div>
       <div class="modal-section">
         <h3>オプション</h3>
+        <label class="toggle-row">
+          <span>オート倍速モード<small>(ONでオート速度を選択可・リール回転速度は×1.0固定)</small></span>
+          <input type="checkbox" id="chkAutoTurbo">
+        </label>
+        <div id="aspeedBtns">
+          <button class="aspeed-btn" data-v="1" disabled>×1.0</button>
+          <button class="aspeed-btn" data-v="2" disabled>×2.0</button>
+          <button class="aspeed-btn" data-v="3" disabled>×3.0</button>
+        </div>
         <div class="toggle-row"><span>リール回転速度</span></div>
         <div id="speedBtns">
           <button class="speed-btn" data-v="0.25">×0.25</button>
