@@ -90,6 +90,8 @@ html, body {
   display: flex; flex-direction: column; justify-content: center; gap: 2px; /* 縦中央寄せ */
 }
 /* ボーナス履歴グラフ (横10列=最新10ボーナス / 縦9段=700G分) */
+#bonusGraph { cursor: pointer; }
+#bonusGraph:active { filter: brightness(1.35); }
 #bonusGraph {
   display: flex; gap: 2px; background: #000; border: 1px solid #222;
   border-radius: 4px; padding: 4px; align-items: flex-end; flex-shrink: 0;
@@ -635,6 +637,30 @@ body.data-mode #app { flex: 0 1 440px; margin: 0; }
 
 /* ================= ミッション ================= */
 #msList { display: flex; flex-direction: column; gap: 5px; max-height: 58vh; overflow-y: auto; }
+
+/* ===== ボーナス履歴一覧 ===== */
+#blList { display: flex; flex-direction: column; gap: 3px; max-height: 58vh; overflow-y: auto; }
+.bl-row {
+  display: grid; grid-template-columns: 1fr 1.2fr 1fr; align-items: center;
+  gap: 6px; padding: 7px 10px; border-radius: 6px;
+  background: #1b1b22; border: 1px solid #33333c;
+}
+.bl-row:nth-child(odd) { background: #16161c; }
+.bl-head {
+  background: #2a2a33; border-color: #44444f; position: sticky; top: 0; z-index: 1;
+  font-size: 11px; color: #9aa3b5; letter-spacing: 1px;
+}
+.bl-no { font-size: 13px; color: #cfd6e4; font-weight: bold; }
+.bl-st { text-align: center; }
+.bl-g { text-align: right; font-size: 15px; font-weight: bold; color: #7dff9a; font-family: 'DSEG7', monospace; }
+.bl-head .bl-no, .bl-head .bl-g { font-size: 11px; color: #9aa3b5; font-weight: normal; font-family: inherit; }
+/* ステータスタグ (BB=赤 / RB=オレンジ) */
+.bl-tag {
+  display: inline-block; min-width: 46px; padding: 3px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: bold; letter-spacing: 1px; color: #fff; text-align: center;
+}
+.bl-tag.bb { background: linear-gradient(180deg, #ff4d6d, #e01e42); box-shadow: 0 0 6px rgba(255,77,109,.45); }
+.bl-tag.rb { background: linear-gradient(180deg, #ffa93a, #f07c10); box-shadow: 0 0 6px rgba(255,169,58,.45); }
 .ms-cat { font-size: 10px; color: #ffce8a; font-weight: bold; letter-spacing: 1px; margin: 8px 2px 2px; }
 .ms-row {
   background: linear-gradient(180deg, #2b2b34, #1d1d24);

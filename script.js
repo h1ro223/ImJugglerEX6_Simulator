@@ -363,6 +363,7 @@ const state = {
   easyLever: false,    // システム設定: 簡単レバーモード(BET0でレバー→MAXBET+レバー)
   history: [],         // ボーナス履歴グラフ {g, t} 新しい順・最大9件
   pendingHist: null,   // 進行中ボーナスの履歴 {g, t}
+  bonusLog: [],        // 全ボーナス履歴 [{t:'BB'|'RB', g:スタートG数}] 古い順。データリセットで消える
   kaishuYen: 0,        // 回収額(精算で円に変換した合計)
   forceBonus: false,   // 次ゲームでGOGO!CHANCE点灯(1回)
   reelSpeed: 1,        // リール回転速度倍率 (0.25 / 0.5 / 1)
@@ -1772,6 +1773,7 @@ function startBonus(type) {
   state.bonusFlag = null;
   state.smallFlag = null;
   state.pendingHist = { g: state.counts.start, t: type }; // 履歴グラフ用
+  state.bonusLog.push({ t: type, g: state.counts.start });  // ボーナス履歴一覧用(全件・古い順)
   if (type === 'BB') { state.counts.bb++; mAdd('bb'); } else { state.counts.rb++; mAdd('rb'); }
   const sesB = state.counts.bb + state.counts.rb;
   if (sesB >= 5) mSet('ses5');
@@ -2161,6 +2163,56 @@ function updateStateLamps() {
 }
 
 /* ================= ボーナス履歴グラフ (横10列×縦9段) ================= */
+/* ================= ボーナス履歴一覧 =================
+   ヘッダー右上の履歴グラフをタップすると開く。上から古い順に
+   「回数 / ステータス(BB・RB) / スタートG数」を表示する。 */
+function renderBonusLog() {
+  const list = $('blList');
+  const sum = $('blSummary');
+  if (!list) return;
+  const log = state.bonusLog || [];
+  const bb = log.filter(x => x.t === 'BB').length;
+  const rb = log.length - bb;
+  sum.textContent = log.length
+    ? `全${log.length}回  (BB ${bb}回 / RB ${rb}回)`
+    : 'まだボーナス履歴がありません';
+  list.innerHTML = '';
+  if (!log.length) return;
+  /* ヘッダー行 */
+  const head = document.createElement('div');
+  head.className = 'bl-row bl-head';
+  head.innerHTML = '<span class="bl-no">回数</span>'
+    + '<span class="bl-st">ステータス</span>'
+    + '<span class="bl-g">スタート</span>';
+  list.appendChild(head);
+  /* 古い順に全件 */
+  log.forEach((e, i) => {
+    const row = document.createElement('div');
+    row.className = 'bl-row';
+    const no = document.createElement('span');
+    no.className = 'bl-no';
+    no.textContent = `${i + 1}回目`;
+    const st = document.createElement('span');
+    st.className = 'bl-st';
+    const tag = document.createElement('span');
+    tag.className = 'bl-tag ' + (e.t === 'BB' ? 'bb' : 'rb');
+    tag.textContent = e.t;
+    st.appendChild(tag);
+    const g = document.createElement('span');
+    g.className = 'bl-g';
+    g.textContent = String(e.g);
+    row.appendChild(no); row.appendChild(st); row.appendChild(g);
+    list.appendChild(row);
+  });
+  /* 最新(最下部)が見えるようにスクロール */
+  list.scrollTop = list.scrollHeight;
+}
+
+function openBonusLog() {
+  renderBonusLog();
+  $('bonusLogOverlay').hidden = false;
+}
+
 const GRAPH_COLS = 10, GRAPH_ROWS = 9;
 let graphCells = []; // [列][段(下から)]
 function buildGraph() {
@@ -2225,7 +2277,7 @@ function saveGame() {
       bonusType: state.bonusType, bonusPaid: state.bonusPaid,
       bbWinG: state.bbWinG, bonusVer: state.bonusVer,
       replayPending: state.replayPending,
-      history: state.history, pendingHist: state.pendingHist,
+      history: state.history, pendingHist: state.pendingHist, bonusLog: state.bonusLog,
       rareLamp: state.rareLamp, kaishuYen: state.kaishuYen,
       reelSpeed: state.reelSpeed, autoTurbo: state.autoTurbo, autoSpeed: state.autoSpeed, msgBarOn: state.msgBarOn,
       replayLamp: state.replayLamp, gogo1Bet: state.gogo1Bet, easyLever: state.easyLever,
@@ -2278,6 +2330,7 @@ function loadGame() {
     state.easyLever = !!d.easyLever;
     state.history = Array.isArray(d.history) ? d.history.slice(0, 9) : [];
     state.pendingHist = d.pendingHist || null;
+    state.bonusLog = Array.isArray(d.bonusLog) ? d.bonusLog.filter(x => x && (x.t === 'BB' || x.t === 'RB')) : [];
     state.rareLamp = !!d.rareLamp;
     state.reelSpeed = [0.25, 0.5, 1].includes(d.reelSpeed) ? d.reelSpeed : (d.easyMode ? 0.5 : 1); // 旧簡単モードは0.5に移行
     state.autoTurbo = !!d.autoTurbo;
@@ -2298,6 +2351,7 @@ function resetData() {
   state.counts = { bb: 0, rb: 0, total: 0, start: 0 };
   state.history = [];
   state.pendingHist = null;
+  state.bonusLog = [];   // ボーナス履歴一覧もリセット
   clearBetLampAnim();
   state.betLampShown = 0;
   state.betCtUntil = 0;
@@ -2319,7 +2373,7 @@ function resetAll() {
     bet: 0, replayPending: 0, replayLamp: false, inWait: false, betLampShown: 0, betCtUntil: 0,
     bonusFlag: null, smallFlag: null,
     inBonus: false, bonusType: null, bonusPaid: 0,
-    history: [], pendingHist: null, betLock: false, bbHitPlaying: false, payoutLock: false,
+    history: [], pendingHist: null, bonusLog: [], betLock: false, bbHitPlaying: false, payoutLock: false,
     bbWinG: 0, bonusVer: 'NORMAL', bonusCountHold: false, bonusCountFinal: 0,
     rareLamp: false, kaishuYen: 0, forceBonus: false, customProb: null, xMode: 0, x2Started: false, xLock: false, seMuteX: false,
     challenge: null, challengeStats: { played: 0, correct: 0 }, dataMode: false, diffLog: [], diffBase: 0, graphMinG: 1000,
@@ -2881,6 +2935,9 @@ function bindEvents() {
     $('missionOverlay').hidden = false;
   });
   $('btnCloseMission').addEventListener('click', () => { $('missionOverlay').hidden = true; });
+  /* --- ボーナス履歴一覧 (ヘッダー右上の履歴グラフをタップ) --- */
+  if (el.bonusGraph) el.bonusGraph.addEventListener('click', () => { audio.ensure(); openBonusLog(); });
+  $('btnCloseBonusLog').addEventListener('click', () => { $('bonusLogOverlay').hidden = true; });
   $('missionOverlay').addEventListener('click', e => { if (e.target === $('missionOverlay')) $('missionOverlay').hidden = true; });
 
   /* --- サウンドルーム (音楽プレイヤー) --- */

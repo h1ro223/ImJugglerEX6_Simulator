@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>アイムジャグラーEX (6号機) v3.5</title>
+<title>アイムジャグラーEX (6号機) v3.6</title>
 <link rel="icon" type="image/png" href="./icon/gogo.png">
 <link rel="apple-touch-icon" href="./icon/gogo.png">
 <meta name="theme-color" content="#101014">
@@ -16,7 +16,7 @@
   <header id="dataPanel">
     <div class="dp-top">
       <span class="dp-unit">0001番台</span>
-      <span class="dp-name">アイムジャグラーEX (6号機) v3.5</span>
+      <span class="dp-name">アイムジャグラーEX (6号機) v3.6</span>
       <button class="dp-auto" id="dpAuto">Auto</button>
       <button class="dp-vol" id="btnVolPop">♪</button>
     </div>
@@ -45,7 +45,7 @@
         <span class="dp-num green" id="dpGosei">1/---</span>
       </div>
     </div>
-    <div id="bonusGraph" aria-hidden="true"></div>
+    <div id="bonusGraph" role="button" tabindex="0" title="タップでボーナス履歴一覧"></div>
     </div>
   </header>
 
@@ -269,6 +269,16 @@
       <p class="custom-status" id="msSummary"></p>
       <div id="msList"></div>
       <button class="sub-close" id="btnCloseMission">閉じる</button>
+    </div>
+  </div>
+
+  <!-- ▼ ボーナス履歴一覧ポップアップ ▼ -->
+  <div id="bonusLogOverlay" class="sub-overlay" hidden>
+    <div id="bonusLogModal" class="sub-modal">
+      <h2>ボーナス履歴</h2>
+      <p class="custom-status" id="blSummary"></p>
+      <div id="blList"></div>
+      <button class="sub-close" id="btnCloseBonusLog">閉じる</button>
     </div>
   </div>
 
