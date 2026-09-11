@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>アイムジャグラーEX (6号機) v3.6</title>
+<title>アイムジャグラーEX (6号機) v4.0</title>
 <link rel="icon" type="image/png" href="./icon/gogo.png">
 <link rel="apple-touch-icon" href="./icon/gogo.png">
 <meta name="theme-color" content="#101014">
@@ -16,7 +16,7 @@
   <header id="dataPanel">
     <div class="dp-top">
       <span class="dp-unit">0001番台</span>
-      <span class="dp-name">アイムジャグラーEX (6号機) v3.6</span>
+      <span class="dp-name">アイムジャグラーEX (6号機) v4.0</span>
       <button class="dp-auto" id="dpAuto">Auto</button>
       <button class="dp-vol" id="btnVolPop">♪</button>
     </div>
@@ -46,6 +46,12 @@
       </div>
     </div>
     <div id="bonusGraph" role="button" tabindex="0" title="タップでボーナス履歴一覧"></div>
+    </div>
+    <!-- 目押しTA: 計測中はdp-bodyを隠してこちらを表示 -->
+    <div id="taPanel" hidden>
+      <span id="taBest">BEST --:--.---</span>
+      <span id="taState">目押しTA</span>
+      <span id="taTimer">0:00.000</span>
     </div>
   </header>
 
@@ -151,7 +157,7 @@
     <div id="modal">
       <h2>MENU</h2>
       <div id="menuBtns">
-        <button class="menu-btn" id="btnCatChallenge">チャレンジモード</button>
+        <button class="menu-btn" id="btnCatMinigame">ミニゲーム</button>
         <button class="menu-btn" id="btnCatMission">ミッション</button>
         <button class="menu-btn" id="btnCatSound">サウンドルーム</button>
         <button class="menu-btn" id="btnPayList">小役一覧</button>
@@ -300,6 +306,50 @@
       </div>
       <div id="srList"></div>
       <button class="sub-close" id="btnCloseSound">閉じる</button>
+    </div>
+  </div>
+
+  <!-- ▼ ミニゲーム選択ポップアップ ▼ -->
+  <div id="minigameOverlay" class="sub-overlay" hidden>
+    <div id="minigameModal" class="sub-modal">
+      <h2>ミニゲーム</h2>
+      <p class="custom-note">通常プレイとは別の遊び方です。プレイ中は台設定などの一部機能が使えなくなります。</p>
+      <div id="mgBtns">
+        <button class="menu-btn" id="btnMgChallenge">設定判別チャレンジ<small>隠し設定を推理して当てる</small></button>
+        <button class="menu-btn" id="btnMgTa">目押しTA<small>ボーナスを揃えるまでのタイムアタック</small></button>
+      </div>
+      <button class="sub-close" id="btnCloseMinigame">閉じる</button>
+    </div>
+  </div>
+
+  <!-- ▼ 目押しTAポップアップ ▼ -->
+  <div id="taOverlay" class="sub-overlay" hidden>
+    <div id="taModal" class="sub-modal">
+      <h2>目押しTA</h2>
+      <p class="custom-note">
+        ボーナスを揃えるまでのタイムを競うモードです。<br>
+        <b>1G目</b>… 3つの停止ボタンを押して離すと<b>必ずペカります</b>(適当押しでOK)。<br>
+        <b>2G目</b>… <b>レバーを引いた瞬間に計測開始</b>。7・7・7(BB)または7・7・BAR(RB)を狙ってください。<br>
+        <b>揃えた瞬間に計測終了</b>。目押しをミスすると小役が揃うこともあります。
+      </p>
+      <p class="custom-status" id="taStatus"></p>
+      <p class="ch-record" id="taRecord"></p>
+      <button class="gold-btn" id="btnTaStart">スタート</button>
+      <button class="danger-btn ch-quit" id="btnTaQuit" hidden>諦める (通常プレイに戻る)</button>
+      <button class="sub-close" id="btnCloseTa">閉じる</button>
+    </div>
+  </div>
+
+  <!-- ▼ 目押しTA 結果ポップアップ ▼ -->
+  <div id="taResultOverlay" class="sub-overlay" hidden>
+    <div id="taResultModal" class="sub-modal">
+      <h2 id="taResultTitle">RESULT</h2>
+      <p class="ta-newrec" id="taNewRec" hidden>★ NEW RECORD ★</p>
+      <p class="ta-result-type" id="taResultType"></p>
+      <div class="ta-result-time" id="taResultTime">0:00.000</div>
+      <p class="ta-result-best" id="taResultBest"></p>
+      <button class="gold-btn" id="btnTaRetry">再プレイ</button>
+      <button class="sub-close" id="btnTaClose">通常プレイに戻る</button>
     </div>
   </div>
 

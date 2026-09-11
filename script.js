@@ -366,6 +366,9 @@ const state = {
   bonusLog: [],        // 全ボーナス履歴 [{t:'BB'|'RB', g:スタートG数}] 古い順。データリセットで消える
   kaishuYen: 0,        // 回収額(精算で円に変換した合計)
   forceBonus: false,   // 次ゲームでGOGO!CHANCE点灯(1回)
+  stopHeld: false,     // 第3停止ボタンを押し込んだまま(離すまでボーナス突入を保留)
+  pendingBonus: null,  // 停止ボタンを離すまで待たせているボーナス種別 'BB'|'RB'
+  ta: null,            // 目押しTA {phase:'arm'|'ready'|'running', startAt, endAt, result}
   reelSpeed: 1,        // リール回転速度倍率 (0.25 / 0.5 / 1)
   autoTurbo: false,    // オート倍速モード (ONでオート速度x2/x3が選択可・リール速度は1.0固定)
   autoSpeed: 1,        // オート速度 (1 / 2 / 3) ※autoTurbo中のみ有効
@@ -1005,6 +1008,7 @@ function layoutReels() {
 /* メインループ */
 let lastT = 0;
 function loop(t) {
+  if (state.ta && state.ta.phase === 'running') taRenderTime(); // 目押しTAのタイマー更新
   const dt = Math.min(50, t - lastT || 16);
   lastT = t;
   for (const r of reels) {
@@ -1159,6 +1163,7 @@ const LEVER_SUB_VOL = 0.22;
 function doLeverAction() {
   el.lever.classList.add('pushed');
   setTimeout(() => el.lever.classList.remove('pushed'), 150);
+  taBeginTimer(); // 目押しTA: 実際にレバーが引かれた瞬間に計測開始
   /* レバー音の再生開始からSTOP_GATE_MS(0.6秒)は停止ボタンをグレーアウト(倍速時は短縮) */
   const gate = aMs(STOP_GATE_MS);
   state.stopEnableAt = performance.now() + gate;
@@ -1206,6 +1211,8 @@ function startGame() {
   state.reelsStopped = 0;
   state.thirdStopPressed = false;
   state.pressOrder = [];
+  state.stopHeld = false;
+  state.pendingBonus = null;
   state.payTarget = 0;
   disp.payout = 0;
 
@@ -1217,9 +1224,10 @@ function startGame() {
     const sp = getProbs(); // カスタム設定モード適用中はカスタム確率
     let newBonus = false, rareHit = false, dupCherry = false;
     const hadFlag = !!state.bonusFlag; // 楽曲判定用: このゲームで新規当選したか
-    consumeSecretCommand(); // 隠しコマンド入力があればここでforceBonusに変換
+    const taMode = taActive(); // 目押しTA中は抽選・隠しコマンドを行わない
+    if (!taMode) consumeSecretCommand(); // 隠しコマンド入力があればここでforceBonusに変換
     /* 「ペカ確定」(メニュー/隠しコマンド): 確率無視でボーナスフラグ確定 */
-    if (state.forceBonus) {
+    if (state.forceBonus && !taMode) {
       const rare = state.forceBonus === 'rare';
       state.forceBonus = false;
       if (rare && !state.bonusFlag) {
@@ -1235,7 +1243,7 @@ function startGame() {
         else state.lampPending = true;
       }
     }
-    if (!state.bonusFlag) {
+    if (!state.bonusFlag && !taMode) {
       const r = Math.random();
       if (r < sp.bb) {
         state.bonusFlag = 'BB'; newBonus = true;
@@ -1335,7 +1343,7 @@ function pressStop(i) {
   state.lastStopPressAt = nowT;
   state.pressOrder.push(i);
   state.stopsInitiated++;
-  if (state.stopsInitiated === 3) state.thirdStopPressed = true;
+  if (state.stopsInitiated === 3) { state.thirdStopPressed = true; state.stopHeld = true; }
   audio.playSE('STOP', true); // 重ね再生可
   el.stopBtns[i].disabled = true;
   el.stopBtns[i].classList.remove('active');
@@ -1349,6 +1357,23 @@ function releaseStopVisual() {
 /* 第3停止ボタンを離した瞬間 → 後ペカ / 単チェリー成立時は必ず点灯 */
 function onStopRelease() {
   if (!state.thirdStopPressed) return;
+  state.stopHeld = false;
+  /* 目押しTA 1G目: 停止形に関わらず必ずペカらせる */
+  if (state.ta && state.ta.phase === 'arm') {
+    state.pendingBonus = null; // 1G目でいきなり揃うことは無いが保険
+    taForcePeka();
+    updateUI();
+    return;
+  }
+  /* 押し込み中に保留していたボーナスを、ボタンを離した瞬間に開始する(実機準拠) */
+  if (state.pendingBonus) {
+    const type = state.pendingBonus;
+    state.pendingBonus = null;
+    if (state.lampPending) { state.lampPending = false; lightLamp(); mSet('latePeka'); }
+    startBonus(type);
+    updateUI();
+    return;
+  }
   /* 単チェリー(順押しで左のみチェリー露出)は実機ではボーナス確定パターン。
      後ペカ抽選の結果に関わらず、この停止形が出た時点で必ずGOGO!ランプを点灯させる(保険) */
   if (!state.lampPending && !state.lampLit && !state.inBonus && state.bonusFlag &&
@@ -1422,6 +1447,29 @@ function resolveGame() {
 
   if (bonusAligned) {
     state.replayLamp = false; // ボーナス突入でReplayランプは消灯
+    /* 目押しTA: 揃った瞬間に計測終了。ボーナスには突入しない(BGMもhit音のみ) */
+    if (state.ta && state.ta.phase === 'running') {
+      const type = state.bonusFlag;
+      state.bonusFlag = null;
+      state.smallFlag = null;
+      unlightLamp();
+      taFinish(type);
+      state.bet = 0;
+      state.gamePhase = 'idle';
+      saveGame();
+      updateUI();
+      return;
+    }
+    /* 実機準拠: 第3停止ボタンを押し込んだままの間はボーナスに突入せず、
+       BGM(BBhit/RB)も鳴らさない。ボタンを離した瞬間にstartBonus()する。 */
+    if (state.stopHeld) {
+      state.pendingBonus = state.bonusFlag;
+      state.bet = 0;
+      state.gamePhase = 'idle';
+      saveGame();
+      updateUI();
+      return;
+    }
     startBonus(state.bonusFlag);
   } else {
     pay = payoutFor(wins, bet, cherryUnitFor(bet, state.cols));
@@ -1597,6 +1645,151 @@ function setDataMode(on) {
   $('dataSide').hidden = !on;
   if (on) { $('graphRange').value = String(state.graphMinG || 1000); renderDataPanel(true); mSet('useDataMode'); }
   saveGame();
+}
+
+/* ================= 目押しTA =================
+   ボーナスを揃えるまでのタイムアタック。
+   フロー: スタート → 1G目(必ずペカる) → 2G目レバーONで計測開始
+           → BB/RB整列で計測終了(BBhit1のみ再生・ボーナス消化はしない)
+   state.ta = { phase, startAt, endAt, result }
+     phase 'arm'     … 1G目待ち(まだペカっていない)
+     phase 'ready'   … ペカ済み。次のレバーONで計測開始
+     phase 'running' … 計測中
+     phase 'done'    … 結果表示中 */
+const TA_BEST_KEY = 'imjuggler_ex_6_ta_best_v1';
+
+function taLoadBest() {
+  try { const v = Number(localStorage.getItem(TA_BEST_KEY)); return (isFinite(v) && v > 0) ? v : 0; }
+  catch (e) { return 0; }
+}
+function taSaveBest(ms) {
+  try { localStorage.setItem(TA_BEST_KEY, String(ms)); } catch (e) {}
+}
+/* ms → "0:00.000" (分:秒.ミリ) */
+function taFormat(ms) {
+  if (!isFinite(ms) || ms < 0) ms = 0;
+  const m = Math.floor(ms / 60000);
+  const sec = Math.floor(ms % 60000 / 1000);
+  const mil = Math.floor(ms % 1000);
+  return `${m}:${String(sec).padStart(2, '0')}.${String(mil).padStart(3, '0')}`;
+}
+function taActive() { return !!(state.ta && state.ta.phase !== 'done'); }
+
+/* ヘッダー表示の切替 (計測中は通常カウンターを隠してタイマーを出す) */
+function taSyncPanel() {
+  const on = !!state.ta;
+  const body = document.querySelector('#dataPanel .dp-body');
+  if (body) body.hidden = on;
+  $('taPanel').hidden = !on;
+  if (!on) return;
+  const best = taLoadBest();
+  $('taBest').textContent = best ? `BEST ${taFormat(best)}` : 'BEST --:--.---';
+  const p = state.ta.phase;
+  $('taState').textContent =
+    p === 'arm'     ? '1G目: 3つ止めて離す' :
+    p === 'ready'   ? 'レバーONで計測開始!' :
+    p === 'running' ? '● 計測中' : 'FINISH';
+  const pan = $('taPanel');
+  pan.classList.toggle('running', p === 'running');
+  pan.classList.toggle('done', p === 'done');
+  taRenderTime();
+}
+function taRenderTime() {
+  if (!state.ta) return;
+  const t = state.ta;
+  const ms = t.phase === 'running' ? (performance.now() - t.startAt)
+           : (t.endAt ? t.endAt - t.startAt : 0);
+  $('taTimer').textContent = taFormat(ms);
+}
+
+/* TA開始: データをリセットし、設定6・ボーナス確定(BB/RB 50%)状態にする */
+function taStart() {
+  resetData();
+  state.challenge = null;
+  state.customProb = null;
+  state.setting = 6;               // 小役は設定6の確率
+  state.autoMode = false;
+  state.forceBonus = false;
+  unlightLamp();
+  state.bonusFlag = null;
+  state.smallFlag = null;
+  state.inBonus = false;
+  state.bonusType = null;
+  state.replayPending = 0;
+  state.replayLamp = false;
+  state.bet = 0;
+  state.ta = { phase: 'arm', startAt: 0, endAt: 0, result: null };
+  /* メダルが無いと始まらないので最低限用意する */
+  if (state.mochi < 50) { state.mochi = 50; state.credit = Math.min(CREDIT_MAX, 50); syncMedalDisplay(); }
+  taSyncPanel();
+  refreshSettingBtns();
+  refreshPekaBtn();
+  refreshSkipBtn();
+  saveGame();
+  updateUI();
+  message('目押しTA: 1G目は適当押しでOK! 3つ止めて離すとペカります');
+}
+
+/* TA終了(諦める / 通常プレイに戻る) */
+function taQuit(msg) {
+  state.ta = null;
+  unlightLamp();
+  state.bonusFlag = null;
+  state.smallFlag = null;
+  state.pendingBonus = null;
+  taSyncPanel();
+  refreshSettingBtns();
+  refreshPekaBtn();
+  refreshSkipBtn();
+  saveGame();
+  updateUI();
+  if (msg) message(msg);
+}
+
+/* 1G目: 第3停止を離した瞬間に必ずペカらせる(BB/RB 50%) */
+function taForcePeka() {
+  if (!state.ta || state.ta.phase !== 'arm') return;
+  if (!state.bonusFlag) state.bonusFlag = Math.random() < 0.5 ? 'BB' : 'RB';
+  state.ta.phase = 'ready';
+  if (!state.lampLit) lightLamp();
+  taSyncPanel();
+  message('GOGO!CHANCE!! 次のレバーONで計測開始!');
+}
+
+/* 2G目のレバーON: 計測開始 */
+function taBeginTimer() {
+  if (!state.ta || state.ta.phase !== 'ready') return;
+  state.ta.phase = 'running';
+  state.ta.startAt = performance.now();
+  taSyncPanel();
+}
+
+/* ボーナス整列: 計測終了 */
+function taFinish(type) {
+  if (!state.ta || state.ta.phase !== 'running') return false;
+  state.ta.endAt = performance.now();
+  state.ta.phase = 'done';
+  const ms = state.ta.endAt - state.ta.startAt;
+  state.ta.result = { ms, type };
+  const prev = taLoadBest();
+  const isNew = !prev || ms < prev;
+  if (isNew) taSaveBest(ms);
+  taSyncPanel();
+  /* BBhit1のみ再生(その後のBB/RBループBGMには入らない) */
+  audio.stopBGM();
+  audio.playBGMOnce('BBHIT1', () => {});
+  /* 結果ポップアップ */
+  $('taResultType').textContent = type === 'BB' ? 'BIG BONUS 揃い!' : 'REGULAR BONUS 揃い!';
+  $('taResultType').className = 'ta-result-type ' + (type === 'BB' ? 'bb' : 'rb');
+  $('taResultTime').textContent = taFormat(ms);
+  $('taNewRec').hidden = !isNew;
+  $('taResultBest').textContent = isNew
+    ? (prev ? `自己ベスト更新! (旧記録 ${taFormat(prev)})` : '初記録!')
+    : `自己ベスト ${taFormat(prev)}`;
+  $('taResultTitle').textContent = isNew ? 'NEW RECORD!' : 'RESULT';
+  setTimeout(() => { $('taResultOverlay').hidden = false; }, 600);
+  saveGame();
+  return true;
 }
 
 /* ================= 777ver (激アツ演出) ================= */
@@ -2374,6 +2567,7 @@ function resetAll() {
     bonusFlag: null, smallFlag: null,
     inBonus: false, bonusType: null, bonusPaid: 0,
     history: [], pendingHist: null, bonusLog: [], betLock: false, bbHitPlaying: false, payoutLock: false,
+    stopHeld: false, pendingBonus: null, ta: null,
     bbWinG: 0, bonusVer: 'NORMAL', bonusCountHold: false, bonusCountFinal: 0,
     rareLamp: false, kaishuYen: 0, forceBonus: false, customProb: null, xMode: 0, x2Started: false, xLock: false, seMuteX: false,
     challenge: null, challengeStats: { played: 0, correct: 0 }, dataMode: false, diffLog: [], diffBase: 0, graphMinG: 1000,
@@ -2436,6 +2630,11 @@ function applySeVol(v100) { state.seVol = v100 / 100; audio.applyVolumes(); sync
 /* 「現在のボーナスをスキップ」ボタンの有効/無効
    有効化条件: BB=BBhit系mp3が停止しBB系BGMが始まった後 / RB=RB.mp3再生開始と同時(=RB突入直後) */
 function refreshSkipBtn() {
+  if (taActive()) {
+    const b0 = $('btnSkipBonus');
+    if (b0) { b0.disabled = true; b0.textContent = '目押しTA中は使用できません'; }
+    return;
+  }
   const b = $('btnSkipBonus');
   const isX = state.inBonus && state.bonusType === 'BB' && state.bonusVer === 'X';
   const en = state.inBonus && !isX && !(state.bonusType === 'BB' && state.bbHitPlaying);
@@ -2466,6 +2665,12 @@ function skipBonus() {
 }
 
 function refreshPekaBtn() {
+  /* 目押しTA中はGOGO確定ボタンを使わせない */
+  if (taActive()) {
+    const b0 = $('btnForcePeka');
+    if (b0) { b0.disabled = true; b0.textContent = '目押しTA中は使用できません'; b0.classList.remove('armed'); }
+    return;
+  }
   const b = el.btnForcePeka;
   if (state.challenge && state.challenge.active) {
     /* 判別チャレンジ中は確率をゆがめるため使用不可 */
@@ -2516,6 +2721,16 @@ function askConfirm(msg, cb, infoOnly) {
   $('confirmOverlay').hidden = false;
 }
 function refreshSettingBtns() {
+  /* 目押しTA中は設定変更不可(設定6固定) */
+  if (taActive()) {
+    document.querySelectorAll('.setting-btn').forEach(b => {
+      b.disabled = true;
+      b.classList.toggle('selected', Number(b.dataset.s) === 6);
+    });
+    $('btnCustomProb').disabled = true;
+    el.currentSetting.textContent = '現在:設定6 (目押しTA中)';
+    return;
+  }
   const inCh = !!(state.challenge && state.challenge.active);
   document.querySelectorAll('.setting-btn').forEach(btn => {
     btn.classList.toggle('selected', !inCh && !state.customProb && Number(btn.dataset.s) === state.setting);
@@ -2800,6 +3015,7 @@ function bindEvents() {
     askConfirm(`現在の${t}を最大枚数までスキップして終了します。\nよろしいですか?`, () => { skipBonus(); closeModal(); });
   });
   $('btnCustomProb').addEventListener('click', () => {
+    if (taActive()) { askConfirm('目押しTA中は使用できません。', null, true); return; }
     buildCustomRows();
     $('customOverlay').hidden = false;
   });
@@ -2854,10 +3070,62 @@ function bindEvents() {
     refreshChallenge();
     saveGame();
   }
-  $('btnCatChallenge').addEventListener('click', () => {
+  /* --- ミニゲーム選択 --- */
+  $('btnCatMinigame').addEventListener('click', () => { $('minigameOverlay').hidden = false; });
+  $('btnCloseMinigame').addEventListener('click', () => { $('minigameOverlay').hidden = true; });
+  $('minigameOverlay').addEventListener('click', e => { if (e.target === $('minigameOverlay')) $('minigameOverlay').hidden = true; });
+  $('btnMgChallenge').addEventListener('click', () => {
+    if (taActive()) { askConfirm('目押しTA中は開始できません。\n先に目押しTAを終了してください。', null, true); return; }
+    $('minigameOverlay').hidden = true;
     refreshChallenge();
     $('challengeOverlay').hidden = false;
   });
+  $('btnMgTa').addEventListener('click', () => {
+    if (state.challenge && state.challenge.active) { askConfirm('設定判別チャレンジ中は開始できません。\n先にチャレンジを終了してください。', null, true); return; }
+    $('minigameOverlay').hidden = true;
+    refreshTa();
+    $('taOverlay').hidden = false;
+  });
+
+  /* --- 目押しTA --- */
+  function refreshTa() {
+    const best = taLoadBest();
+    $('taRecord').textContent = best ? `自己ベスト: ${taFormat(best)}` : '自己ベスト: --';
+    const active = taActive();
+    $('taStatus').textContent = active ? '★ 目押しTA 進行中' : '';
+    $('btnTaStart').textContent = active ? '最初からやり直す' : 'スタート';
+    $('btnTaQuit').hidden = !active;
+  }
+  $('btnTaStart').addEventListener('click', () => {
+    if (state.gamePhase !== 'idle') { askConfirm('リール停止後に開始できます。', null, true); return; }
+    askConfirm('目押しTAを開始しますか?\nデータ(回転数・BB/RB回数・履歴)はリセットされます。', () => {
+      taStart();
+      refreshTa();
+      $('taOverlay').hidden = true;
+      closeModal();
+    });
+  });
+  $('btnTaQuit').addEventListener('click', () => {
+    askConfirm('目押しTAを終了して通常プレイに戻ります。\nよろしいですか?', () => {
+      taQuit('目押しTAを終了しました');
+      refreshTa();
+      $('taOverlay').hidden = true;
+    });
+  });
+  $('btnCloseTa').addEventListener('click', () => { $('taOverlay').hidden = true; });
+  $('taOverlay').addEventListener('click', e => { if (e.target === $('taOverlay')) $('taOverlay').hidden = true; });
+  /* 結果ポップアップ */
+  $('btnTaRetry').addEventListener('click', () => {
+    $('taResultOverlay').hidden = true;
+    audio.stopBGM();
+    taStart(); // 2G目(=1G目の適当押し)からやり直し
+  });
+  $('btnTaClose').addEventListener('click', () => {
+    $('taResultOverlay').hidden = true;
+    audio.stopBGM();
+    taQuit('通常プレイに戻りました');
+  });
+
   $('btnChStart').addEventListener('click', () => {
     if (state.gamePhase !== 'idle') { askConfirm('リール停止後に開始できます。', null, true); return; }
     askConfirm('チャレンジを開始しますか?\nデータ(回転数・BB/RB回数・履歴)はリセットされます。', () => {
@@ -3116,6 +3384,10 @@ function bindEvents() {
     else if (k === '1') addBet(1);                                      // [1]1BET
     else if (k === 'insert') rentCoins();
     else if (k === 'a') setAutoMode(!state.autoMode);
+    else if (k === 'd') {                                               // [D]データ表示モード切替(操作ガイドには非表示)
+      setDataMode(!state.dataMode);
+      message(state.dataMode ? 'データ表示モード ON' : 'データ表示モード OFF');
+    }
   });
   document.addEventListener('keyup', e => {
     const k = e.key.toLowerCase();
