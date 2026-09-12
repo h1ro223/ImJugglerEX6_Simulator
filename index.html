@@ -36,12 +36,12 @@
       </div>
     </div>
     <div class="dp-side">
-      <div class="dp-item">
-        <span class="dp-label green">総回転数</span>
+      <div class="dp-item" id="dpTotalBox">
+        <span class="dp-label green" id="dpTotalLabel">総回転数</span>
         <span class="dp-num green" id="dpTotal">0</span>
       </div>
-      <div class="dp-item">
-        <span class="dp-label green">合成確率</span>
+      <div class="dp-item" id="dpGoseiBox">
+        <span class="dp-label green" id="dpGoseiLabel">合成確率</span>
         <span class="dp-num green" id="dpGosei">1/---</span>
       </div>
     </div>
@@ -110,12 +110,6 @@
             <span class="seg-value" id="segPayout">0</span>
             <span class="seg-label">PAY OUT</span>
           </div>
-        </div>
-        <!-- 目押しTA: 計測中はsegAreaを隠してこちらを表示 -->
-        <div id="taPanel" hidden>
-          <span id="taBest">BEST --:--.---</span>
-          <span id="taState">目押しTA</span>
-          <span id="taTimer">0:00.000</span>
         </div>
       </div>
 

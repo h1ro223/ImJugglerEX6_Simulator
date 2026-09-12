@@ -1680,22 +1680,26 @@ function taActive() { return !!(state.ta && state.ta.phase !== 'done'); }
 function taUiOn() { return !!state.ta; }
 
 /* ヘッダー表示の切替 (計測中は通常カウンターを隠してタイマーを出す) */
+/* 「総回転数」「合成確率」の枠をそのまま使い、ラベルと数値だけ差し替える。
+   通常モード: 総回転数 / 合成確率
+   目押しTA  : BEST(自己ベスト) / TIME(今回のタイム) */
 function taSyncPanel() {
   const on = !!state.ta;
-  /* CREDIT/COUNT/PAY OUT を隠してストップウォッチに差し替える */
-  $('segArea').hidden = on;
-  $('taPanel').hidden = !on;
-  if (!on) return;
-  const best = taLoadBest();
-  $('taBest').textContent = best ? `BEST ${taFormat(best)}` : 'BEST --:--.---';
+  document.body.classList.toggle('ta-mode', on);
+  if (!on) {
+    document.body.classList.remove('ta-run', 'ta-done');
+    $('dpTotalLabel').textContent = '総回転数';
+    $('dpGoseiLabel').textContent = '合成確率';
+    updateUI(); // 通常モードの数値表示に戻す
+    return;
+  }
   const p = state.ta.phase;
-  $('taState').textContent =
-    p === 'arm'     ? '1G目: 3つ止めて離す' :
-    p === 'ready'   ? 'レバーONで計測開始!' :
-    p === 'running' ? '● 計測中' : 'FINISH';
-  const pan = $('taPanel');
-  pan.classList.toggle('running', p === 'running');
-  pan.classList.toggle('done', p === 'done');
+  document.body.classList.toggle('ta-run', p === 'running');
+  document.body.classList.toggle('ta-done', p === 'done');
+  $('dpTotalLabel').textContent = 'BEST';
+  $('dpGoseiLabel').textContent = 'TIME';
+  const best = taLoadBest();
+  $('dpTotal').textContent = best ? taFormat(best) : '-:--.---';
   taRenderTime();
 }
 function taRenderTime() {
@@ -1703,7 +1707,7 @@ function taRenderTime() {
   const t = state.ta;
   const ms = t.phase === 'running' ? (performance.now() - t.startAt)
            : (t.endAt ? t.endAt - t.startAt : 0);
-  $('taTimer').textContent = taFormat(ms);
+  $('dpGosei').textContent = taFormat(ms);
 }
 
 /* TA開始: データをリセットし、設定6・ボーナス確定(BB/RB 50%)状態にする */
@@ -2296,12 +2300,16 @@ function updateUI() {
   el.dpBB.textContent = String(state.counts.bb);
   el.dpRB.textContent = String(state.counts.rb);
   el.dpStart.textContent = String(state.counts.start);
-  el.dpTotal.textContent = String(state.counts.total);
+  /* 目押しTA中は「総回転数」「合成確率」の枠をBEST/TIME表示に使うため上書きしない */
+  const taSeg = taUiOn();
+  const bonusTotal = state.counts.bb + state.counts.rb;
+  if (!taSeg) {
+    el.dpTotal.textContent = String(state.counts.total);
+    el.dpGosei.textContent = bonusTotal > 0 ? '1/' + (state.counts.total / bonusTotal).toFixed(1) : '1/---';
+  }
   logDiff();
   renderDataPanel();
   syncAutoBtn();
-  const bonusTotal = state.counts.bb + state.counts.rb;
-  el.dpGosei.textContent = bonusTotal > 0 ? '1/' + (state.counts.total / bonusTotal).toFixed(1) : '1/---';
 
   // BETランプ (増加時は0.05秒間隔で1つずつ点灯。減少・消灯は即時)
   const dispBet = state.replayPending || state.bet;
