@@ -47,12 +47,6 @@
     </div>
     <div id="bonusGraph" role="button" tabindex="0" title="タップでボーナス履歴一覧"></div>
     </div>
-    <!-- 目押しTA: 計測中はdp-bodyを隠してこちらを表示 -->
-    <div id="taPanel" hidden>
-      <span id="taBest">BEST --:--.---</span>
-      <span id="taState">目押しTA</span>
-      <span id="taTimer">0:00.000</span>
-    </div>
   </header>
 
   <!-- ▼ 筐体 ▼ -->
@@ -116,6 +110,12 @@
             <span class="seg-value" id="segPayout">0</span>
             <span class="seg-label">PAY OUT</span>
           </div>
+        </div>
+        <!-- 目押しTA: 計測中はsegAreaを隠してこちらを表示 -->
+        <div id="taPanel" hidden>
+          <span id="taBest">BEST --:--.---</span>
+          <span id="taState">目押しTA</span>
+          <span id="taTimer">0:00.000</span>
         </div>
       </div>
 
@@ -414,10 +414,11 @@
   <div id="resetOverlay" class="sub-overlay" hidden>
     <div id="resetModal" class="sub-modal">
       <h2>リセット</h2>
+      <p class="custom-status" id="resetTaNote" hidden>目押しTA中はリセットできません</p>
       <div class="reset-list">
         <button class="danger-btn" id="btnResetData">台データリセット<small>BB/RB回数・回転数・履歴グラフを初期化</small></button>
         <button class="danger-btn" id="btnResetMission">ミッション・進捗リセット<small>ミッションの達成状況・進捗を初期化</small></button>
-        <button class="danger-btn" id="btnResetAll">全リセット<small>メダル・投資・設定などすべて初期化</small></button>
+        <button class="danger-btn" id="btnResetAll">全リセット<small>メダル・投資・設定・目押しTA記録などすべて初期化</small></button>
       </div>
       <button class="sub-close" id="btnCloseReset">閉じる</button>
     </div>

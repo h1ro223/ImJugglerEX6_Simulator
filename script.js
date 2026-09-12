@@ -1358,8 +1358,10 @@ function releaseStopVisual() {
 function onStopRelease() {
   if (!state.thirdStopPressed) return;
   state.stopHeld = false;
-  /* 目押しTA 1G目: 停止形に関わらず必ずペカらせる */
+  /* 目押しTA 1G目: 停止形に関わらず必ずペカらせる
+     ※3つすべて停止操作された後でのみ有効(画面外クリック等での誤発火を防ぐ) */
   if (state.ta && state.ta.phase === 'arm') {
+    if (state.stopsInitiated < 3 || state.reelsStopped < 3) return;
     state.pendingBonus = null; // 1G目でいきなり揃うことは無いが保険
     taForcePeka();
     updateUI();
@@ -1674,12 +1676,14 @@ function taFormat(ms) {
   return `${m}:${String(sec).padStart(2, '0')}.${String(mil).padStart(3, '0')}`;
 }
 function taActive() { return !!(state.ta && state.ta.phase !== 'done'); }
+/* 表示用: 結果ポップアップ中(phase='done')もTAの見た目を維持する */
+function taUiOn() { return !!state.ta; }
 
 /* ヘッダー表示の切替 (計測中は通常カウンターを隠してタイマーを出す) */
 function taSyncPanel() {
   const on = !!state.ta;
-  const body = document.querySelector('#dataPanel .dp-body');
-  if (body) body.hidden = on;
+  /* CREDIT/COUNT/PAY OUT を隠してストップウォッチに差し替える */
+  $('segArea').hidden = on;
   $('taPanel').hidden = !on;
   if (!on) return;
   const best = taLoadBest();
@@ -1718,6 +1722,16 @@ function taStart() {
   state.replayPending = 0;
   state.replayLamp = false;
   state.bet = 0;
+  /* ★重要★ 前ゲームの停止状態が残っていると、画面外クリック(window pointerup)で
+     onStopRelease()が走って即ペカしてしまうため、必ずリセットする */
+  state.thirdStopPressed = false;
+  state.stopsInitiated = 0;
+  state.reelsStopped = 0;
+  state.pressOrder = [];
+  state.stopHeld = false;
+  state.pendingBonus = null;
+  state.cols = [null, null, null];
+  state.gamePhase = 'idle';
   state.ta = { phase: 'arm', startAt: 0, endAt: 0, result: null };
   /* メダルが無いと始まらないので最低限用意する */
   if (state.mochi < 50) { state.mochi = 50; state.credit = Math.min(CREDIT_MAX, 50); syncMedalDisplay(); }
@@ -2231,7 +2245,8 @@ function medalTargets() {
 }
 function renderMedals() {
   el.segCredit.textContent = String(disp.credit);
-  el.wMochi.textContent = String(disp.mochi);
+  /* 目押しTA中は持ちメダル・投資・回収・差額を「-」表示にする(メダル管理が不要なため) */
+  el.wMochi.textContent = taUiOn() ? '-' : String(disp.mochi);
   el.segPayout.textContent = String(disp.payout);
   el.segBonus.textContent = (state.inBonus || state.bonusCountHold) ? String(disp.bonus) : '---';
   xCheckPhase(); // 777ver: COUNT表示が210に達した瞬間にBBX2へ
@@ -2264,11 +2279,19 @@ function animateMedals(intervalMs, delayMs = 0) {
 /* ================= UI更新 ================= */
 function updateUI() {
   renderMedals();
-  el.wInvest.textContent = state.investYen.toLocaleString();
-  el.wKaishu.textContent = state.kaishuYen.toLocaleString();
-  const diffYen = state.kaishuYen - state.investYen;
-  el.wDiff.textContent = (diffYen >= 0 ? '+' : '') + diffYen.toLocaleString();
-  el.wDiff.style.color = diffYen >= 0 ? '#7fd4ff' : '#ff8a8a';
+  if (taUiOn()) {
+    /* 目押しTA中は金額表示をすべて「-」にする */
+    el.wInvest.textContent = '-';
+    el.wKaishu.textContent = '-';
+    el.wDiff.textContent = '-';
+    el.wDiff.style.color = '#7f8a9c';
+  } else {
+    el.wInvest.textContent = state.investYen.toLocaleString();
+    el.wKaishu.textContent = state.kaishuYen.toLocaleString();
+    const diffYen = state.kaishuYen - state.investYen;
+    el.wDiff.textContent = (diffYen >= 0 ? '+' : '') + diffYen.toLocaleString();
+    el.wDiff.style.color = diffYen >= 0 ? '#7fd4ff' : '#ff8a8a';
+  }
 
   el.dpBB.textContent = String(state.counts.bb);
   el.dpRB.textContent = String(state.counts.rb);
@@ -2292,8 +2315,10 @@ function updateUI() {
   const betCap = betCapNow();
   el.btnBet1.disabled = betLocked || state.inBonus || state.bet >= betCap;
   el.btnMaxBet.disabled = betLocked || state.bet >= betCap;
-  el.btnRent.disabled = !idle;
-  el.btnPayback.disabled = !idle || state.bet > 0 || state.mochi <= 0;
+  /* 目押しTA中は貸出・精算は不要なのでグレーアウト */
+  const taOn = taUiOn();
+  el.btnRent.disabled = !idle || taOn;
+  el.btnPayback.disabled = !idle || taOn || state.bet > 0 || state.mochi <= 0;
   /* レバー: BET0では引けない(簡単レバーモードON時のみ0BETでも引ける)
      BET直後0.1秒はクールタイムでグレーアウト(同時押し対策) */
   el.lever.classList.toggle('disabled', !idle || state.xLock || !canPullLever() || betCtActive());
@@ -2574,6 +2599,7 @@ function resetAll() {
     hadBonus: false, prevBonusType: null, renChain: 0,
     counts: { bb: 0, rb: 0, total: 0, start: 0 }
   });
+  try { localStorage.removeItem(TA_BEST_KEY); } catch (e) {} // 目押しTAの最速記録も削除
   audio.stopBGM();
   audio.stopSELoop();
   unlightLamp();
@@ -2858,19 +2884,30 @@ function bindEvents() {
   $('volOverlay').addEventListener('click', e => { if (e.target === $('volOverlay')) $('volOverlay').hidden = true; });
 
   /* --- リセットポップアップ --- */
-  $('btnCatReset').addEventListener('click', () => { $('resetOverlay').hidden = false; });
+  /* 目押しTA中は各リセットを無効化する(台データは共有状態のため) */
+  function refreshResetBtns() {
+    const taOn = taUiOn();
+    [['btnResetData', 'データリセット'], ['btnResetAll', '全リセット'], ['btnResetMission', 'ミッション・進捗リセット']]
+      .forEach(([id]) => { const b = $(id); if (b) b.disabled = taOn; });
+    const note = $('resetTaNote');
+    if (note) note.hidden = !taOn;
+  }
+  $('btnCatReset').addEventListener('click', () => { refreshResetBtns(); $('resetOverlay').hidden = false; });
   $('btnCloseReset').addEventListener('click', () => { $('resetOverlay').hidden = true; });
   $('resetOverlay').addEventListener('click', e => { if (e.target === $('resetOverlay')) $('resetOverlay').hidden = true; });
   $('btnResetData').addEventListener('click', () => {
+    if (taUiOn()) { askConfirm('目押しTA中は使用できません。', null, true); return; }
     askConfirm('データ(BB/RB回数・回転数・履歴グラフ)をリセットします。\n本当によろしいですか?', () => { resetData(); });
   });
   $('btnResetAll').addEventListener('click', () => {
+    if (taUiOn()) { askConfirm('目押しTA中は使用できません。', null, true); return; }
     /* ミッション進捗は含めない(進捗リセットはシステム設定の専用ボタンのみ) */
-    askConfirm('全データ(メダル・投資・設定など)を初期化します。\n本当によろしいですか?', () => {
+    askConfirm('全データ(メダル・投資・設定など)を初期化します。\n目押しTAの最速記録も削除されます。\n本当によろしいですか?', () => {
       resetAll(); closeModal();
     });
   });
   $('btnResetMission').addEventListener('click', () => {
+    if (taUiOn()) { askConfirm('目押しTA中は使用できません。', null, true); return; }
     askConfirm('ミッションの進捗をリセットします。\n本当によろしいですか?', () => {
       mstore = freshMissionStore();
       try { localStorage.removeItem(MISSION_SAVE_KEY); } catch (e) {}
@@ -3432,6 +3469,8 @@ function init() {
   buildGraph();
   bindEvents();
   updateSecretGlow(); // シークレット曲の解放グロー反映
+  state.ta = null;      // 目押しTAはリロードで解除(台の状態は保存しない)
+  taSyncPanel();        // CREDIT/COUNT/PAY OUT の表示状態を確定させる
   if (state.dataMode) setDataMode(true); // データ表示モードの復元(リロード後)
 
   if (state.inBonus) {
