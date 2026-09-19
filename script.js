@@ -137,6 +137,14 @@ function consumeSecretCommand() {
 }
 
 const PEKA_FIRST = 0.15;   // 先ペカ(レバーON時点灯)の割合。残り85%は後ペカ(第3停止離し)
+
+/* ===== リーチ目・プレミア演出の発生率 (すべてボーナス当選ゲームのみ) =====
+   実機準拠。いずれも「ボーナス確定」を示唆するだけで、出玉には一切影響しない。 */
+const PREM_SILENT    = 0.008; // 無音 (レバーON〜第3停止まで無音) ※BB確定
+const PREM_LEVER_FF  = 0.004; // レバーONファンファーレ (叩いた瞬間に当選音) ※BB確定
+const PREM_STRONG_GOGO = 0.03; // 強ガコッ! (告知音が通常より大きい)
+const PREM_TENPAI_MUJUN = 0.06; // テンパイ音矛盾 (鳴るはずが鳴らない / 鳴らないはずが鳴る) ※BB確定
+const STRONG_GOGO_VOL = 1.6;  // 強ガコッ!の音量倍率
 const BB_LIMIT   = 280;    // BB: 280枚を超える払い出しで終了
 const RB_LIMIT   = 98;     // RB: 98枚を超える払い出しで終了
 /* 「現在のボーナスをスキップ」で即時獲得する枚数(実質手取り)。
@@ -234,7 +242,14 @@ const MISSIONS = [
   { id: 'm67', cat: '応用', name: '生涯差枚 +3,000枚を超える', t: 3000, v: s => Math.max(0, s.lifeOut - s.lifeIn) },
   { id: 'm68', cat: '応用', name: '生涯差枚 +5,000枚を超える', t: 5000, v: s => Math.max(0, s.lifeOut - s.lifeIn) },
   { id: 'm69', cat: '応用', name: '投入1,000枚以上で出玉率120%を記録する', t: 1, v: s => s.rate120 },
-  { id: 'm70', cat: '応用', name: '投資5,000円以上で回収10,000円を達成する', t: 1, v: s => (s.investYen >= 5000 && s.kaishuYen >= 10000) ? 1 : 0 }
+  { id: 'm70', cat: '応用', name: '投資5,000円以上で回収10,000円を達成する', t: 1, v: s => (s.investYen >= 5000 && s.kaishuYen >= 10000) ? 1 : 0 },
+  /* --- プレミア演出 (v4.1追加) --- */
+  { id: 'm71', cat: 'プレミア', name: '無音を引く',                   t: 1, v: s => s.premSilent   || 0 },
+  { id: 'm72', cat: 'プレミア', name: 'レバーONファンファーレを引く', t: 1, v: s => s.premLeverFF  || 0 },
+  { id: 'm73', cat: 'プレミア', name: '強ガコッ!を引く',              t: 1, v: s => s.premGako     || 0 },
+  { id: 'm74', cat: 'プレミア', name: 'テンパイ音矛盾を引く',         t: 1, v: s => s.premMujun    || 0 },
+  { id: 'm75', cat: 'プレミア', name: '逆押しで2確目を見る',          t: 1, v: s => s.prem2kaku    || 0 },
+  { id: 'm76', cat: 'プレミア', name: 'ピエロ・BAR・ピエロのハサミ目を見る', t: 1, v: s => s.premHasami || 0 }
 ];
 
 function freshMissionStore() {
@@ -367,6 +382,12 @@ const state = {
   kaishuYen: 0,        // 回収額(精算で円に変換した合計)
   forceBonus: false,   // 次ゲームでGOGO!CHANCE点灯(1回)
   stopHeld: false,     // 第3停止ボタンを押し込んだまま(離すまでボーナス突入を保留)
+  /* --- プレミア演出 (そのゲーム限り。レバーONで毎回リセット) --- */
+  premSilent: false,   // 無音: リール回転音・停止音を鳴らさない
+  premLeverFF: false,  // レバーONファンファーレ: レバーONで当選音
+  premStrongGogo: false,// 強ガコッ!: 告知音を大きく鳴らす
+  premTenpaiMujun: false,// テンパイ音矛盾: テンパイ音の鳴る条件を反転させる
+  twoKakuShown: false, // このゲームで2確目の告知を既に出したか(二重表示防止)
   pendingBonus: null,  // 停止ボタンを離すまで待たせているボーナス種別 'BB'|'RB'
   ta: null,            // 目押しTA {phase:'arm'|'ready'|'running', startAt, endAt, result}
   reelSpeed: 1,        // リール回転速度倍率 (0.25 / 0.5 / 1)
@@ -496,6 +517,8 @@ const audio = {
     if (!state.seOn) return;
     /* 777ver: hit曲の中にBet/Lever/Stop/GOGOの音が入っているため、再生中は該当SEを鳴らさない */
     if (state.seMuteX && (key === 'BET' || key === 'MAXBET2' || key === 'MAXBET3' || key === 'LEVER' || key === 'LEVERSP' || key === 'WAIT' || key === 'STOP' || key === 'STOP7' || key === 'GOGO')) return;
+    /* 無音プレミア: レバーON〜第3停止まで、レバー音と停止音を鳴らさない(BB確定の示唆) */
+    if (state.premSilent && (key === 'LEVER' || key === 'LEVERSP' || key === 'STOP' || key === 'STOP7')) return;
     const buf = this.buffers[key];
     if (buf && this.ctx) {
       const src = this.ctx.createBufferSource();
@@ -1168,6 +1191,12 @@ function doLeverAction() {
   const gate = aMs(STOP_GATE_MS);
   state.stopEnableAt = performance.now() + gate;
   setTimeout(updateUI, gate + 10); // ゲート明けにボタンを有効化
+  /* レバーONファンファーレ(0確プレミア): レバーを叩いた瞬間に当選音が鳴る。
+     通常のレバー音は鳴らさず、ファンファーレだけを鳴らす。 */
+  if (state.premLeverFF) {
+    audio.playBGMOnce('BBHIT1', () => {});
+    return;
+  }
   const key = leverSEKey();
   if (key === 'LEVERSP') {
     /* 軍艦マーチverの節目: LeverSPを主役にしつつ、通常Leverも音量を絞って同時再生 */
@@ -1213,6 +1242,8 @@ function startGame() {
   state.pressOrder = [];
   state.stopHeld = false;
   state.pendingBonus = null;
+  clearPremium(); // プレミア演出はそのゲーム限り(この後の抽選で再度立つ)
+  state.twoKakuShown = false;
   state.payTarget = 0;
   disp.payout = 0;
 
@@ -1300,9 +1331,14 @@ function startGame() {
       if (rareHit) mAdd('rare');
     }
 
-    /* GOGO!CHANCE 点灯タイミング抽選 (先ペカ15% / 後ペカ85%) */
+    /* ===== プレミア演出の抽選 (新規当選ゲームのみ) =====
+       すべて「ボーナス確定」の示唆演出。出玉・確率には一切影響しない。 */
+    if (newBonus) rollPremium(state.bonusFlag);
+
+    /* GOGO!CHANCE 点灯タイミング抽選 (先ペカ15% / 後ペカ85%)
+       ※レバーONファンファーレは0確なので、必ず先ペカ扱いにする */
     if (newBonus && !state.lampLit) {
-      if (Math.random() < PEKA_FIRST) {
+      if (state.premLeverFF || Math.random() < PEKA_FIRST) {
         lightLamp(); // 先ペカ(レバーON時) → このゲームから揃えられる
         mSet('firstPeka');
       } else {
@@ -1396,7 +1432,12 @@ function lightLamp() {
   el.gogoLamp.classList.add('lit');
   el.gogoLamp.classList.toggle('rainbow', state.rareLamp); // 中段チェリー時はレインボー
   $('gogoImgRainbow').hidden = !state.rareLamp; // CHANCE文字レインボー画像(GOGOCHANCE_2.png)
-  audio.playSE('GOGO');
+  /* 強ガコッ!: 告知音をいつもより大きく鳴らすプレミア */
+  audio.playSE('GOGO', true, state.premStrongGogo ? STRONG_GOGO_VOL : 1);
+  if (state.premStrongGogo) {
+    el.gogoLamp.classList.add('strong-gako');
+    setTimeout(() => el.gogoLamp.classList.remove('strong-gako'), 900);
+  }
   state.gogoSndEnd = performance.now() + (state.seOn ? audio.duration('GOGO', 1200) : 0);
   /* 777ver: 77G目のBB当選点灯なら、GOGO音停止の1秒後から煽りループ(GOGOCHANCE_X)を再生 */
   if (!state.inBonus && state.bonusFlag === 'BB' && pickBBVersion(state.bbWinG || 0) === 'X') {
@@ -1422,14 +1463,99 @@ function unlightLamp() {
   refreshPekaBtn();
 }
 
+/* ================= リーチ目・プレミア演出 =================
+   実機(アイムジャグラーEX 6号機)に搭載されているプレミアを再現する。
+   いずれも「ボーナス確定」を示唆するだけで、抽選・出玉には一切影響しない。
+
+   ・無音              … レバーON〜第3停止まで音が消える (BB確定)
+   ・レバーONファンファーレ… レバーを叩いた瞬間に当選音が鳴る (BB確定・0確)
+   ・強ガコッ!          … 告知音がいつもより大きい
+   ・テンパイ音矛盾      … 赤7テンパイなのに無音 / BARテンパイなのに鳴る (BB確定)
+*/
+function clearPremium() {
+  state.premSilent = false;
+  state.premLeverFF = false;
+  state.premStrongGogo = false;
+  state.premTenpaiMujun = false;
+}
+function rollPremium(bonusType) {
+  clearPremium();
+  const isBB = bonusType === 'BB';
+  /* 無音・レバーONファンファーレ・テンパイ音矛盾はBB確定のプレミア */
+  if (isBB && Math.random() < PREM_LEVER_FF) { state.premLeverFF = true; mSet('premLeverFF'); }
+  else if (isBB && Math.random() < PREM_SILENT) { state.premSilent = true; mSet('premSilent'); }
+  if (isBB && Math.random() < PREM_TENPAI_MUJUN) { state.premTenpaiMujun = true; mSet('premMujun'); }
+  /* 強ガコッ!はBB/RB共通 */
+  if (Math.random() < PREM_STRONG_GOGO) { state.premStrongGogo = true; mSet('premGako'); }
+}
+
+/* ===== 2確目(2リール確定目) の検出 =====
+   実機の逆押し・中押しで「2リール止めた時点でボーナス確定と分かる」停止形。
+   本シミュレーターは実機と同じ停止制御なので、
+   「ボーナスフラグが無ければ絶対に出ない形」が自動的に2確目になる。
+
+   代表的なもの(アイムジャグラーEX):
+   ・逆押し(右→中): 右リール中段に7が停止し、中リールを止めてブドウが非テンパイ
+     → ブドウ成立なら必ずテンパイするため、非テンパイ = ボーナス確定
+   ・中押し(中→右): 中リール中段7から、右リールでブドウ・リプレイが否定される形
+
+   判定は「2つ停止した時点で、残り1リールをどう止めてもブドウ・リプレイが
+   揃い得ない」かどうかで行う(＝小役が否定された＝ボーナスしか残っていない)。 */
+function isTwoReelConfirm() {
+  if (state.reelsStopped !== 2 || state.pressOrder.length < 2) return false;
+  if (state.pressOrder[0] === 0) return false;   // 順押しは対象外(単チェリーが担当)
+  if (!state.bonusFlag) return false;            // フラグが無ければ2確ではない
+  const rest = [0, 1, 2].find(i => !state.cols[i]);
+  if (rest === undefined) return false;
+
+  /* 残りリールの全停止位置で、ブドウ・リプレイが揃う可能性が1つでもあるか調べる */
+  for (let p = 0; p < KOMA; p++) {
+    const cols = state.cols.slice();
+    cols[rest] = windowCol(rest, p);
+    const wins = evalWins(cols);
+    if (wins.some(w => w.role === 'GRAPE' || w.role === 'REPLAY')) return false; // 小役が残っている
+  }
+  return true; // どう止めても小役が揃わない = ボーナス確定の形
+}
+
+/* ===== ピエロ・BAR・ピエロ のハサミ目 =====
+   取扱説明書に載っているマニアックなリーチ目。実際に拝めるのは非常に稀。
+   左リールと右リールにピエロ、中リールにBARが有効ライン上に並んだ形。 */
+function isHasamiMe(cols) {
+  if (!cols || !cols[0] || !cols[1] || !cols[2]) return false;
+  return LINES.some(rows =>
+    cols[0][rows[0]] === SYM.CLOWN &&
+    cols[1][rows[1]] === SYM.BAR &&
+    cols[2][rows[2]] === SYM.CLOWN);
+}
+
+/* テンパイ音を鳴らすか判定する。
+   通常: 7-7テンパイ(BBの形)でのみ鳴る
+   矛盾: 条件が反転し「7-7で鳴らない」「7-BARで鳴る」になる (BB確定のプレミア) */
+function shouldPlayTenpaiSE(col0, col1) {
+  const seven = LINES.some(rows => col0[rows[0]] === SYM.SEVEN && col1[rows[1]] === SYM.SEVEN);
+  /* 7-BARテンパイ(RBの形)。左が7で中がBAR、または左BAR・中7 */
+  const bar = LINES.some(rows =>
+    (col0[rows[0]] === SYM.SEVEN && col1[rows[1]] === SYM.BAR) ||
+    (col0[rows[0]] === SYM.BAR   && col1[rows[1]] === SYM.SEVEN));
+  if (state.premTenpaiMujun) return bar && !seven ? true : (seven ? false : bar);
+  return seven;
+}
+
 /* --- リール停止完了 --- */
 function onReelStopped(idx, pos) {
   state.reelsStopped++;
-  /* Stop7: 第1ボタン→第2ボタンの順で押し、7-7テンパイした時のみ再生 */
+  /* テンパイ音: 第1→第2の順押しで、左右2リールがテンパイした時のみ再生 */
   if (idx === 1 && state.pressOrder[0] === 0 && state.pressOrder[1] === 1 && state.cols[0]) {
-    const tenpai = LINES.some(rows =>
-      state.cols[0][rows[0]] === SYM.SEVEN && state.cols[1][rows[1]] === SYM.SEVEN);
-    if (tenpai) audio.playSE('STOP7');
+    if (shouldPlayTenpaiSE(state.cols[0], state.cols[1])) audio.playSE('STOP7');
+  }
+  /* 2確目: 変則押しで2リール止めた時点でボーナスが確定する停止形 */
+  if (state.reelsStopped === 2 && !state.twoKakuShown && isTwoReelConfirm()) {
+    state.twoKakuShown = true;
+    mSet('prem2kaku');
+    message('★ 2確目! ボーナス確定!', true);
+    el.reelWindow.classList.add('two-kaku');
+    setTimeout(() => el.reelWindow.classList.remove('two-kaku'), 1200);
   }
   if (state.reelsStopped === 3 && state.cols.every(Boolean)) {
     setTimeout(resolveGame, aMs(120)); // 第3停止→結果判定の間(オート倍速に追従)
@@ -1439,6 +1565,12 @@ function onReelStopped(idx, pos) {
 /* --- 結果判定 --- */
 function resolveGame() {
   if (state.gamePhase !== 'spinning') return; // 二重実行ガード(多重防御)
+  /* ハサミ目(ピエロ・BAR・ピエロ)の検出。説明書に載っているマニアックなリーチ目 */
+  if (state.bonusFlag && isHasamiMe(state.cols)) {
+    mSet('premHasami');
+    message('★ ハサミ目! (ピエロ・BAR・ピエロ)', true);
+  }
+
   const wins = evalWins(state.cols);
   const bet = state.bet;
   let pay = 0;
@@ -1973,6 +2105,7 @@ function clearBonusBlink() {
 
 /* --- ボーナス --- */
 function startBonus(type) {
+  clearPremium(); // ボーナス突入でプレミア演出は終了(無音を解除してBGMを鳴らす)
   state.inBonus = true;
   state.bonusType = type;
   refreshPekaBtn(); // BB/RB中表示に切替 (bonusType確定後に呼ぶこと)

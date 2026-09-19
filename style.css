@@ -247,6 +247,9 @@ body.ta-mode.ta-done #dpGosei { color: #ffd23b; text-shadow: 0 0 10px rgba(255,2
      rgba(255,255,255,0) 84%, rgba(0,0,0,.55) 100%);
 }
 #reelWindow.win-flash .reel { animation: reelWin .3s steps(2) 4; }
+/* 2確目: 2リール止めた時点でボーナス確定と分かった時の枠演出 */
+#reelWindow.two-kaku .reel { animation: twoKaku .2s steps(2) 6; }
+@keyframes twoKaku { 50% { box-shadow: 0 0 0 3px #ff4d6d, 0 0 20px #ff4d6d; } }
 @keyframes reelWin { 50% { box-shadow: 0 0 0 3px #ffd23b, 0 0 18px #ffd23b; } }
 
 /* 状態ランプ */
@@ -287,6 +290,13 @@ body.ta-mode.ta-done #dpGosei { color: #ffd23b; text-shadow: 0 0 10px rgba(255,2
 /* --- ランプ + 7セグ --- */
 #underReel { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 #gogoLamp { width: 25%; max-width: 100px; flex-shrink: 0; position: relative; }
+/* 強ガコッ!: 告知音が大きいプレミア。ランプが一瞬強く光る */
+#gogoLamp.strong-gako { animation: strongGako .9s ease-out; }
+@keyframes strongGako {
+  0%   { filter: brightness(2.6) saturate(1.5); transform: scale(1.10); }
+  30%  { filter: brightness(1.8) saturate(1.3); transform: scale(1.04); }
+  100% { filter: none; transform: scale(1); }
+}
 #gogoLamp img { width: 100%; display: block; border-radius: 8px; }
 #gogoImgOn { position: absolute; inset: 0; } /* 点灯画像を重ねて即時切り替え(フェード防止) */
 #gogoLamp img[hidden] { display: none; }
