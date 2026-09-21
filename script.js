@@ -15,6 +15,21 @@ const SYM_IMG = {
   6: './Reel/BAR.png',
   7: './Reel/7.png'
 };
+/* 見た目だけ差し替える図柄 (抽選・停止制御・配当は元の図柄のまま) */
+const REEL_IMG_ALT = {
+  C2: './Reel/Cherry2.png'   // 葉っぱ2枚のチェリー(レアチェリーB)
+};
+/* リール別の差し替え位置 { index: 画像キー }  ※index0=窓の上段 */
+const REEL_IMG_OVERRIDE = [
+  { 16: 'C2' }, // 左リール index16 のチェリー
+  {},           // 中
+  {}            // 右
+];
+function reelImgKey(reelIdx, koma) {
+  const ov = REEL_IMG_OVERRIDE[reelIdx];
+  return (ov && ov[koma]) || String(REEL_DATA[reelIdx][koma]);
+}
+function reelImgSrc(key) { return SYM_IMG[key] || REEL_IMG_ALT[key]; }
 
 /* リール配列 (index0 = コマ21(上) → index20 = コマ01(下)) */
 const REEL_DATA = [
@@ -917,8 +932,10 @@ class Reel {
       cell.className = 'cell';
       const img = document.createElement('img');
       const sym = REEL_DATA[this.idx][i % KOMA];
-      img.src = SYM_OPT[sym] || SYM_IMG[sym];
+      const key = reelImgKey(this.idx, i % KOMA); // 見た目用の画像キー(Cherry2等)
+      img.src = SYM_OPT[key] || reelImgSrc(key);
       img.dataset.sym = String(sym);
+      img.dataset.img = key;
       img.alt = '';
       img.draggable = false;
       cell.appendChild(img);
@@ -994,7 +1011,8 @@ const reels = [];
 const SYM_OPT = {}; // 最適化済み画像キャッシュ (後から生成するリールにも適用)
 function optimizeSymbolImages() {
   const W = 512, H = 188; // 1280:470 と同比率 (512*470/1280=188)
-  for (const sym in SYM_IMG) {
+  const ALL_IMG = Object.assign({}, SYM_IMG, REEL_IMG_ALT); // 見た目差し替え用画像も最適化
+  for (const sym in ALL_IMG) {
     const src = new Image();
     src.onload = () => {
       try {
@@ -1008,10 +1026,10 @@ function optimizeSymbolImages() {
         c.drawImage(src, 0, (H - h) / 2, W, h); // 横幅フィット・縦中央
         const url = cv.toDataURL('image/jpeg', 0.9); // 白背景・非透過なのでJPEGでOK
         SYM_OPT[sym] = url;
-        document.querySelectorAll('img[data-sym="' + sym + '"]').forEach(im => { im.src = url; });
+        document.querySelectorAll('img[data-img="' + sym + '"]').forEach(im => { im.src = url; });
       } catch (e) { /* file://直開き等でcanvasが使えない場合は原寸のまま表示 */ }
     };
-    src.src = SYM_IMG[sym];
+    src.src = ALL_IMG[sym];
   }
 }
 
@@ -2945,7 +2963,21 @@ function bindEvents() {
   $('btnCloseModal').addEventListener('click', closeModal);
   el.modalOverlay.addEventListener('click', e => { if (e.target === el.modalOverlay) closeModal(); });
 
-  /* --- 小役一覧オーバーレイ (メニューモーダルの上に重ねて表示) --- */
+  /* --- ヘルプ (リール配列 / 小役一覧) --- */
+  const helpOverlay = $('helpOverlay');
+  const reelGuideOverlay = $('reelGuideOverlay');
+  $('btnCatHelp').addEventListener('click', () => { helpOverlay.hidden = false; });
+  $('btnCloseHelp').addEventListener('click', () => { helpOverlay.hidden = true; });
+  helpOverlay.addEventListener('click', e => { if (e.target === helpOverlay) helpOverlay.hidden = true; });
+  $('btnHelpReel').addEventListener('click', () => {
+    reelGuideOverlay.hidden = false;
+    const body = reelGuideOverlay.querySelector('.rg-body');
+    if (body) body.scrollTop = 0; // 開くたびに先頭から
+  });
+  $('btnCloseReelGuide').addEventListener('click', () => { reelGuideOverlay.hidden = true; });
+  reelGuideOverlay.addEventListener('click', e => { if (e.target === reelGuideOverlay) reelGuideOverlay.hidden = true; });
+
+  /* --- 小役一覧オーバーレイ (ヘルプの上に重ねて表示) --- */
   const payOverlay = $('payOverlay');
   $('btnPayList').addEventListener('click', () => { payOverlay.hidden = false; });
   $('btnClosePay').addEventListener('click', () => { payOverlay.hidden = true; });

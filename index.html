@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>アイムジャグラーEX (6号機) v4.1</title>
+<title>アイムジャグラーEX (6号機) v4.2</title>
 <link rel="icon" type="image/png" href="./icon/gogo.png">
 <link rel="apple-touch-icon" href="./icon/gogo.png">
 <meta name="theme-color" content="#101014">
@@ -16,7 +16,7 @@
   <header id="dataPanel">
     <div class="dp-top">
       <span class="dp-unit">0001番台</span>
-      <span class="dp-name">アイムジャグラーEX (6号機) v4.1</span>
+      <span class="dp-name">アイムジャグラーEX (6号機) v4.2</span>
       <button class="dp-auto" id="dpAuto">Auto</button>
       <button class="dp-vol" id="btnVolPop">♪</button>
     </div>
@@ -154,7 +154,7 @@
         <button class="menu-btn" id="btnCatMinigame">ミニゲーム</button>
         <button class="menu-btn" id="btnCatMission">ミッション</button>
         <button class="menu-btn" id="btnCatSound">サウンドルーム</button>
-        <button class="menu-btn" id="btnPayList">小役一覧</button>
+        <button class="menu-btn" id="btnCatHelp">ヘルプ</button>
         <button class="menu-btn" id="btnCatMachine">台設定</button>
         <button class="menu-btn" id="btnCatSystem">システム設定</button>
         <button class="menu-btn danger-menu" id="btnCatReset">リセット</button>
@@ -303,6 +303,18 @@
     </div>
   </div>
 
+  <!-- ▼ ヘルプ選択ポップアップ ▼ -->
+  <div id="helpOverlay" class="sub-overlay" hidden>
+    <div id="helpModal" class="sub-modal">
+      <h2>ヘルプ</h2>
+      <div id="helpBtns">
+        <button class="menu-btn" id="btnHelpReel">リール配列<small>左・中・右リールの図柄の並び</small></button>
+        <button class="menu-btn" id="btnPayList">小役一覧<small>各小役の配当・ボーナスの獲得枚数</small></button>
+      </div>
+      <button class="sub-close" id="btnCloseHelp">閉じる</button>
+    </div>
+  </div>
+
   <!-- ▼ ミニゲーム選択ポップアップ ▼ -->
   <div id="minigameOverlay" class="sub-overlay" hidden>
     <div id="minigameModal" class="sub-modal">
@@ -430,20 +442,32 @@
     </div>
   </div>
 
+  <!-- ▼ リール配列オーバーレイ ▼ -->
+  <div id="reelGuideOverlay" class="sub-overlay" hidden>
+    <div id="reelGuideModal" class="sub-modal">
+      <h2>リール配列</h2>
+      <div class="rg-head"><span>左</span><span>中</span><span>右</span></div>
+      <div class="rg-body">
+        <img id="reelGuideImg" src="./Guide/Reel.png" alt="リール配列表" draggable="false" loading="lazy">
+      </div>
+      <button class="sub-close" id="btnCloseReelGuide">閉じる</button>
+    </div>
+  </div>
+
   <!-- ▼ 小役一覧オーバーレイ ▼ -->
   <div id="payOverlay" hidden>
     <div id="payModal">
       <h2>小役一覧</h2>
       <table id="payTable">
-        <tr><td class="pt-sym"><span class="pt7">7･7･7</span></td><td>BIG BONUS<small>最大+252枚</small></td></tr>
-        <tr><td class="pt-sym"><span class="pt7">7･7･<span class="ptbar">BAR</span></span></td><td>REGULAR BONUS<small>最大+96枚</small></td></tr>
-        <tr><td class="pt-sym">🔔🔔🔔</td><td><b>14枚</b></td></tr>
-        <tr><td class="pt-sym">🤡🤡🤡</td><td><b>10枚</b></td></tr>
-        <tr><td class="pt-sym">🍇🍇🍇</td><td><b>8枚</b><small>2BET時のみ 14枚</small></td></tr>
-        <tr><td class="pt-sym">🍒</td><td><b>1枚</b><small>1･2BET時 7枚 / ライン毎(角=2ライン分)</small></td></tr>
-        <tr><td class="pt-sym">🔁🔁🔁</td><td>リプレイ<small>再遊技</small></td></tr>
+        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./Guide/7.png" alt="7" draggable="false"><img src="./Guide/7.png" alt="7" draggable="false"><img src="./Guide/7.png" alt="7" draggable="false"></span></td><td>BIG BONUS<small>最大+252枚</small></td></tr>
+        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./Guide/7.png" alt="7" draggable="false"><img src="./Guide/7.png" alt="7" draggable="false"><img src="./Guide/BAR.png" alt="BAR" draggable="false"></span></td><td>REGULAR BONUS<small>最大+96枚</small></td></tr>
+        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./Guide/Bell.png" alt="Bell" draggable="false"><img src="./Guide/Bell.png" alt="Bell" draggable="false"><img src="./Guide/Bell.png" alt="Bell" draggable="false"></span></td><td><b>14枚</b></td></tr>
+        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./Guide/Clown.png" alt="Clown" draggable="false"><img src="./Guide/Clown.png" alt="Clown" draggable="false"><img src="./Guide/Clown.png" alt="Clown" draggable="false"></span></td><td><b>10枚</b></td></tr>
+        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./Guide/Grape.png" alt="Grape" draggable="false"><img src="./Guide/Grape.png" alt="Grape" draggable="false"><img src="./Guide/Grape.png" alt="Grape" draggable="false"></span></td><td><b>8枚</b><small>2BET時のみ 14枚</small></td></tr>
+        <tr><td class="pt-sym"><span class="pt-imgs pt-cherry"><img src="./Guide/Cherry.png" alt="Cherry" draggable="false"><img src="./Guide/Cherry2.png" alt="Cherry2" draggable="false"></span></td><td><b>1枚</b><small>1･2BET時 7枚 / ライン毎(角=2ライン分)</small></td></tr>
+        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./Guide/Replay.png" alt="Replay" draggable="false"><img src="./Guide/Replay.png" alt="Replay" draggable="false"><img src="./Guide/Replay.png" alt="Replay" draggable="false"></span></td><td>リプレイ<small>再遊技</small></td></tr>
       </table>
-      <p class="pay-note">※ボーナス中は2BET固定・毎ゲーム🍇(14枚)</p>
+      <p class="pay-note">※ボーナス中は2BET固定・毎ゲーム<img class="pn-img" src="./Guide/Grape.png" alt="ブドウ" draggable="false">(14枚)</p>
       <button id="btnClosePay">閉じる</button>
     </div>
   </div>
