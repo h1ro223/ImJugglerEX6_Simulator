@@ -31,7 +31,10 @@ const MACHINES = {
     bbSkipPay: 252,      // BB: 実際の獲得枚数
     gogoSnd: true,       // ペカ音(GOGOCHANCE.mp3)あり
     replaySplit: false,  // リプレイ音: Replay1/2/3.mp3(リプレイ+BET音一体型)
-    bbHitWait: 0         // BBhit1/2終了→BB曲開始までの待ち(ms)
+    bbHitWait: 0,        // BBhit1/2終了→BB曲開始までの待ち(ms)
+    pekaFirst: 0.15,     // 先ペカ(レバーON即点灯)の割合
+    lampFade: false,     // 後ペカ時のフェード点灯なし(パッと光る)
+    rainbow: true        // 中段チェリー時のレインボー点灯あり
   },
   gogo: {
     name: 'ゴーゴージャグラー3',
@@ -50,7 +53,10 @@ const MACHINES = {
     bbSkipPay: 240,      // BB: 実際の獲得枚数 (アイムより-12)
     gogoSnd: false,      // ペカ音なし
     replaySplit: true,   // リプレイ音: Replay.mp3 → 再生終了後にBET数に応じたBET音
-    bbHitWait: 1000      // BBhit1/2終了→BB_A開始までの待ち(ms) ※一時的な設定
+    bbHitWait: 500,       // BBhit1/2終了→BB_A開始までの待ち(ms) ※一時的な設定
+    pekaFirst: 0,        // 即ペカはプレミア(即点灯)のみ。通常は必ず後ペカ
+    lampFade: true,      // 後ペカは0.25秒かけてふわっと点灯
+    rainbow: false       // レインボー点灯なし(GOGOCHANCE_2は使わない)
   }
 };
 const MACHINE_ID = (() => {
@@ -226,7 +232,7 @@ function consumeSecretCommand() {
   return mode;
 }
 
-const PEKA_FIRST = 0.15;   // 先ペカ(レバーON時点灯)の割合。残り85%は後ペカ(第3停止離し)
+const PEKA_FIRST = MACHINE.pekaFirst;   // 先ペカ(レバーON時点灯)の割合。残り85%は後ペカ(第3停止離し)
 
 /* ===== リーチ目・プレミア演出の発生率 (すべてボーナス当選ゲームのみ) =====
    実機準拠。いずれも「ボーナス確定」を示唆するだけで、出玉には一切影響しない。 */
@@ -235,6 +241,13 @@ const PREM_LEVER_FF  = 0.004; // レバーONファンファーレ (叩いた瞬�
 const PREM_STRONG_GOGO = 0.03; // 強ガコッ! (告知音が通常より大きい)
 const PREM_TENPAI_MUJUN = 0.06; // テンパイ音矛盾 (鳴るはずが鳴らない / 鳴らないはずが鳴る) ※BB確定
 const STRONG_GOGO_VOL = 1.6;  // 強ガコッ!の音量倍率
+/* ゴーゴージャグラー3のプレミア (すべてBB確定・1ゲームに1つだけ) */
+const PREM_G_STOP_DOUBLE = 0.010;  // 第1停止音ダブり
+const PREM_G_FREEZE      = 0.0025; // 3秒フリーズ
+const PREM_G_INSTANT     = 0.015;  // 即点灯 (ゴーゴー3の即ペカ)
+const PREM_G_LEVER_MUTE  = 0.010;  // スタート音無音
+const STOP_DOUBLE_MS = 50;         // 第1停止音ダブりの2回目までの間隔(ms) ※要調整
+const FREEZE_MS      = 3000;       // 3秒フリーズの長さ(ms)
 const BB_LIMIT   = MACHINE.bbLimit; // BB: 機種別 (アイム280 / ゴーゴー3 266) を超える払い出しで終了
 const RB_LIMIT   = 98;     // RB: 98枚を超える払い出しで終了
 /* 「現在のボーナスをスキップ」で即時獲得する枚数(実質手取り)。
@@ -477,6 +490,11 @@ const state = {
   premLeverFF: false,  // レバーONファンファーレ: レバーONで当選音
   premStrongGogo: false,// 強ガコッ!: 告知音を大きく鳴らす
   premTenpaiMujun: false,// テンパイ音矛盾: テンパイ音の鳴る条件を反転させる
+  premStopDouble: false, // [ゴーゴー3] 第1停止音ダブり
+  premFreeze: false,     // [ゴーゴー3] 第3停止離しで3秒フリーズ→点灯
+  premInstant: false,    // [ゴーゴー3] 即点灯(レバーONで点灯)
+  premLeverMute: false,  // [ゴーゴー3] スタート音(Lever.mp3)無音
+  freezeLock: false,     // 3秒フリーズ中(全操作無効・グレーアウト)
   twoKakuShown: false, // このゲームで2確目の告知を既に出したか(二重表示防止)
   pendingBonus: null,  // 停止ボタンを離すまで待たせているボーナス種別 'BB'|'RB'
   ta: null,            // 目押しTA {phase:'arm'|'ready'|'running', startAt, endAt, result}
@@ -616,6 +634,7 @@ const audio = {
     if (state.seMuteX && (key === 'BET' || key === 'MAXBET2' || key === 'MAXBET3' || key === 'LEVER' || key === 'LEVERSP' || key === 'WAIT' || key === 'STOP' || key === 'STOP7' || key === 'GOGO')) return;
     /* 無音プレミア: レバーON〜第3停止まで、レバー音と停止音を鳴らさない(BB確定の示唆) */
     if (state.premSilent && (key === 'LEVER' || key === 'LEVERSP' || key === 'STOP' || key === 'STOP7')) return;
+    if (state.premLeverMute && (key === 'LEVER' || key === 'LEVERSP')) return; // [ゴーゴー3] スタート音無音
     const buf = this.buffers[key];
     if (buf && this.ctx) {
       const src = this.ctx.createBufferSource();
@@ -1441,7 +1460,7 @@ function startGame() {
     /* GOGO!CHANCE 点灯タイミング抽選 (先ペカ15% / 後ペカ85%)
        ※レバーONファンファーレは0確なので、必ず先ペカ扱いにする */
     if (newBonus && !state.lampLit) {
-      if (state.premLeverFF || Math.random() < PEKA_FIRST) {
+      if (state.premLeverFF || state.premInstant || (!state.premFreeze && Math.random() < PEKA_FIRST)) {
         lightLamp(); // 先ペカ(レバーON時) → このゲームから揃えられる
         mSet('firstPeka');
       } else {
@@ -1484,6 +1503,8 @@ function pressStop(i) {
   state.stopsInitiated++;
   if (state.stopsInitiated === 3) { state.thirdStopPressed = true; state.stopHeld = true; }
   audio.playSE('STOP', true); // 重ね再生可
+  /* [ゴーゴー3] 第1停止音ダブり: 第1停止だけStop.mp3を少し遅らせてもう1回鳴らす */
+  if (state.stopsInitiated === 1 && state.premStopDouble) setTimeout(() => audio.playSE('STOP', true), STOP_DOUBLE_MS);
   el.stopBtns[i].disabled = true;
   el.stopBtns[i].classList.remove('active');
   el.stopBtns[i].classList.add('pushed'); // 離すまで押し込み状態を維持
@@ -1510,7 +1531,7 @@ function onStopRelease() {
   if (state.pendingBonus) {
     const type = state.pendingBonus;
     state.pendingBonus = null;
-    if (state.lampPending) { state.lampPending = false; lightLamp(); mSet('latePeka'); }
+    if (state.lampPending) { state.lampPending = false; lightLamp(true); mSet('latePeka'); }
     startBonus(type);
     updateUI();
     return;
@@ -1522,19 +1543,38 @@ function onStopRelease() {
     state.lampPending = true;
   }
   if (state.lampPending) {
+    /* [ゴーゴー3] 3秒フリーズ: 全操作を止めてから点灯 */
+    if (state.premFreeze) { startFreeze(); return; }
     state.lampPending = false;
-    lightLamp();
+    lightLamp(true); // 最後の停止ボタンを離した点灯(ゴーゴー3はフェード)
     mSet('latePeka');
   }
 }
 
-function lightLamp() {
+/* [ゴーゴー3] 3秒フリーズ → フェード点灯。フリーズ中は貸出・BET・レバー・停止すべて無効(グレーアウト) */
+function startFreeze() {
+  state.premFreeze = false;
+  state.freezeLock = true;
+  state.xLock = true; // 既存の全操作ロックを流用
+  updateUI();
+  setTimeout(() => {
+    state.freezeLock = false;
+    state.xLock = false;
+    if (state.lampPending) { state.lampPending = false; lightLamp(true); mSet('latePeka'); }
+    updateUI();
+  }, aMs(FREEZE_MS));
+}
+
+/* fade: 最後の停止ボタンを離した点灯なら true (ゴーゴー3は0.25秒フェード、アイムは常にパッと点灯) */
+function lightLamp(fade = false) {
   state.lampLit = true;
   state.lampPending = false;
-  el.gogoImgOn.hidden = false; // 事前読込済みの点灯画像を即時表示(音と同時)
+  el.gogoLamp.classList.toggle('fade-in', !!(fade && MACHINE.lampFade));
+  el.gogoImgOn.hidden = false; // 事前読込済みの点灯画像を表示(音と同時)
   el.gogoLamp.classList.add('lit');
-  el.gogoLamp.classList.toggle('rainbow', state.rareLamp); // 中段チェリー時はレインボー
-  $('gogoImgRainbow').hidden = !state.rareLamp; // CHANCE文字レインボー画像(GOGOCHANCE_2.png)
+  const rb = !!(state.rareLamp && MACHINE.rainbow); // 中段チェリー時はレインボー(ゴーゴー3は無し)
+  el.gogoLamp.classList.toggle('rainbow', rb);
+  $('gogoImgRainbow').hidden = !rb; // CHANCE文字レインボー画像(GOGOCHANCE_2.png)
   /* 強ガコッ!: 告知音をいつもより大きく鳴らすプレミア */
   if (MACHINE.gogoSnd) audio.playSE('GOGO', true, state.premStrongGogo ? STRONG_GOGO_VOL : 1); // ゴーゴー3はペカ音なし
   if (state.premStrongGogo) {
@@ -1560,7 +1600,7 @@ function unlightLamp() {
   state.lampPending = false;
   state.rareLamp = false;
   el.gogoImgOn.hidden = true;
-  el.gogoLamp.classList.remove('lit', 'rainbow');
+  el.gogoLamp.classList.remove('lit', 'rainbow', 'fade-in');
   $('gogoImgRainbow').hidden = true;
   el.dpStart.classList.remove('x-blink');
   refreshPekaBtn();
@@ -1580,10 +1620,25 @@ function clearPremium() {
   state.premLeverFF = false;
   state.premStrongGogo = false;
   state.premTenpaiMujun = false;
+  state.premStopDouble = false;
+  state.premFreeze = false;
+  state.premInstant = false;
+  state.premLeverMute = false;
 }
 function rollPremium(bonusType) {
   clearPremium();
   const isBB = bonusType === 'BB';
+  /* ゴーゴー3: 専用プレミア4種 (すべてBB確定・1ゲームに1つだけ。強ガコッ等のアイム用は無し) */
+  if (MACHINE_ID === 'gogo') {
+    if (!isBB) return;
+    const r = Math.random();
+    let acc = 0;
+    if (r < (acc += PREM_G_STOP_DOUBLE)) state.premStopDouble = true;
+    else if (r < (acc += PREM_G_FREEZE)) state.premFreeze = true;
+    else if (r < (acc += PREM_G_INSTANT)) state.premInstant = true;
+    else if (r < (acc += PREM_G_LEVER_MUTE)) state.premLeverMute = true;
+    return;
+  }
   /* 無音・レバーONファンファーレ・テンパイ音矛盾はBB確定のプレミア */
   if (isBB && Math.random() < PREM_LEVER_FF) { state.premLeverFF = true; mSet('premLeverFF'); }
   else if (isBB && Math.random() < PREM_SILENT) { state.premSilent = true; mSet('premSilent'); }
@@ -2591,7 +2646,7 @@ function updateUI() {
   else if (betLampTimer === null && state.betLampShown < dispBet) { animateBetLamps(dispBet); }
   renderBetLamps();
 
-  const idle = state.gamePhase === 'idle' && !state.betLock && !state.payoutLock;
+  const idle = state.gamePhase === 'idle' && !state.betLock && !state.payoutLock && !state.freezeLock; // フリーズ中は全グレーアウト
   /* ボーナス中はMAXBETのみ有効(2枚固定)。1BETボタンは無効のまま */
   const betLocked = !idle || state.replayPending > 0;
   const betCap = betCapNow();
