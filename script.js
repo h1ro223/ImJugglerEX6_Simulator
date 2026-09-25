@@ -30,7 +30,8 @@ const MACHINES = {
     bbLimit: 280,        // BB: この枚数を超える払い出しで終了 (COUNT294)
     bbSkipPay: 252,      // BB: 実際の獲得枚数
     gogoSnd: true,       // ペカ音(GOGOCHANCE.mp3)あり
-    replaySplit: false   // リプレイ音: Replay1/2/3.mp3(リプレイ+BET音一体型)
+    replaySplit: false,  // リプレイ音: Replay1/2/3.mp3(リプレイ+BET音一体型)
+    bbHitWait: 0         // BBhit1/2終了→BB曲開始までの待ち(ms)
   },
   gogo: {
     name: 'ゴーゴージャグラー3',
@@ -48,7 +49,8 @@ const MACHINES = {
     bbLimit: 266,        // BB: COUNT280で終了 (アイムより-14)
     bbSkipPay: 240,      // BB: 実際の獲得枚数 (アイムより-12)
     gogoSnd: false,      // ペカ音なし
-    replaySplit: true    // リプレイ音: Replay.mp3 + BET数に応じたBET音
+    replaySplit: true,   // リプレイ音: Replay.mp3 → 再生終了後にBET数に応じたBET音
+    bbHitWait: 1000      // BBhit1/2終了→BB_A開始までの待ち(ms) ※一時的な設定
   }
 };
 const MACHINE_ID = (() => {
@@ -1770,7 +1772,10 @@ function resolveGame() {
          アイム    : Replay1/2/3.mp3 (リプレイ+BET音一体型) をBET数で選択
          ゴーゴー3 : Replay.mp3 + BET数に応じたBET音(Bet/MaxBet2/MaxBet3)を同時再生 */
       const playReplaySnd = MACHINE.replaySplit
-        ? () => { audio.playSE('REPLAY'); audio.playSE(betSEKeyFor(bet)); }
+        ? () => { // Replay.mp3の再生終了後すぐにBET音(1BET=Bet / 2BET=MaxBet2 / 3BET=MaxBet3)
+            audio.playSE('REPLAY');
+            if (state.seOn) setTimeout(() => audio.playSE(betSEKeyFor(bet)), audio.duration('REPLAY', 600));
+          }
         : () => audio.playSE(bet >= 3 ? 'REPLAY3' : bet === 2 ? 'REPLAY2' : 'REPLAY1');
       if (gogoWaitR > 0) setTimeout(playReplaySnd, gogoWaitR);
       else playReplaySnd();
@@ -2265,10 +2270,16 @@ function startBonus(type) {
       const hit = v.hit || (Math.random() < 0.5 ? 'BBHIT1' : 'BBHIT2');
       state.bbHitPlaying = true; /* hit再生中はensure()のBGM復帰を割り込ませない */
       audio.playBGMOnce(hit, () => {
-        state.bbHitPlaying = false;
-        if (state.inBonus && state.bonusType === 'BB') audio.playBGM(bbLoopKey()); // ゴーゴー3はBB_Aから
-        refreshSkipBtn(); // BB系BGM開始と同時にスキップ有効化
-        updateUI();
+        /* hit終了→BB曲開始 (ゴーゴー3は1秒待ってからBB_A。待ち中もbbHitPlayingを立てたままにして
+           ensure()のBGM復帰が先に割り込まないようにする) */
+        const startLoop = () => {
+          state.bbHitPlaying = false;
+          if (state.inBonus && state.bonusType === 'BB') audio.playBGM(bbLoopKey()); // ゴーゴー3はBB_Aから
+          refreshSkipBtn(); // BB系BGM開始と同時にスキップ有効化
+          updateUI();
+        };
+        if (MACHINE.bbHitWait > 0) setTimeout(startLoop, aMs(MACHINE.bbHitWait));
+        else startLoop();
       });
     }
   } else {
