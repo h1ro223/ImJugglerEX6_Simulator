@@ -8,10 +8,10 @@
    機種ごとに違うもの(名前・設定差・素材フォルダ・保存キー)だけをここに持たせ、
    ゲーム進行ロジックは全機種共通で使い回す。
    ・settings : 設定1〜6の確率 (index0 = 設定1)
-   ・dirs     : 素材フォルダ。専用素材が揃ったら './GoJ/SE/' のように書き換えるだけで差し替わる
+   ・dirs     : 素材フォルダ。機種ごとに ImJ/ GoJ/ の中へ BGM・SE・GOGO・Guide・Reel の5点セットで配置
    ・saveSuffix: 保存キーの末尾 (アイムは空=v4.2以前のセーブデータをそのまま引き継ぐ)
    ※機種を追加する時は MACHINES にもう1つ足し、style.css の [data-machine="〇〇"] で色を上書きする */
-const APP_VER = 'v4.3';
+const APP_VER = 'v5.0';
 const MACHINE_KEY = 'juggler_machine'; // 選択中の機種ID (index.htmlの<head>内スクリプトと同じキー)
 const MACHINES = {
   aime: {
@@ -25,12 +25,16 @@ const MACHINES = {
       { bb: 1/259.0, rb: 1/255.0, grape: 1/6.02 },
       { bb: 1/255.0, rb: 1/255.0, grape: 1/5.85 }
     ],
-    dirs: { reel: './Reel/', gogo: './GOGO/', se: './SE/', bgm: './BGM/' },
-    saveSuffix: ''
+    dirs: { reel: './ImJ/Reel/', gogo: './ImJ/GOGO/', se: './ImJ/SE/', bgm: './ImJ/BGM/', guide: './ImJ/Guide/' },
+    saveSuffix: '',
+    bbLimit: 280,        // BB: この枚数を超える払い出しで終了 (COUNT294)
+    bbSkipPay: 252,      // BB: 実際の獲得枚数
+    gogoSnd: true,       // ペカ音(GOGOCHANCE.mp3)あり
+    replaySplit: false   // リプレイ音: Replay1/2/3.mp3(リプレイ+BET音一体型)
   },
   gogo: {
-    name: 'ゴーゴージャグラー',
-    short: 'ゴーゴー',
+    name: 'ゴーゴージャグラー3',
+    short: 'ゴーゴー3',
     settings: [ // ブドウはアイムと同値で仮置き
       { bb: 1/259.0, rb: 1/354.2, grape: 1/6.02 },
       { bb: 1/258.0, rb: 1/332.7, grape: 1/6.02 },
@@ -39,10 +43,12 @@ const MACHINES = {
       { bb: 1/247.3, rb: 1/247.3, grape: 1/6.02 },
       { bb: 1/234.9, rb: 1/234.9, grape: 1/5.85 }
     ],
-    /* 専用素材が揃うまではアイムの素材を一時流用。
-       例) GOGOランプだけ差し替える → gogo: './GoJ/GOGO/' に変更 */
-    dirs: { reel: './Reel/', gogo: './GOGO/', se: './SE/', bgm: './BGM/' },
-    saveSuffix: '_gogo'
+    dirs: { reel: './GoJ/Reel/', gogo: './GoJ/GOGO/', se: './GoJ/SE/', bgm: './GoJ/BGM/', guide: './GoJ/Guide/' },
+    saveSuffix: '_gogo',
+    bbLimit: 266,        // BB: COUNT280で終了 (アイムより-14)
+    bbSkipPay: 240,      // BB: 実際の獲得枚数 (アイムより-12)
+    gogoSnd: false,      // ペカ音なし
+    replaySplit: true    // リプレイ音: Replay.mp3 + BET数に応じたBET音
   }
 };
 const MACHINE_ID = (() => {
@@ -51,12 +57,14 @@ const MACHINE_ID = (() => {
 })();
 const MACHINE = MACHINES[MACHINE_ID];
 document.documentElement.dataset.machine = MACHINE_ID; // CSSのフレーム色切り替え用
-/* 素材パスを選択中の機種のフォルダに読み替える ('./SE/Bet.mp3' → dirs.se + 'Bet.mp3') */
-const DIR_MAP = [['./Reel/', 'reel'], ['./GOGO/', 'gogo'], ['./SE/', 'se'], ['./BGM/', 'bgm']];
+/* 素材パスを選択中の機種のフォルダに読み替える ('./SE/Bet.mp3' → dirs.se + 'Bet.mp3')
+   './Reel/x.png' のような共通表記、または './ImJ/Reel/x.png' のような機種フォルダ表記のどちらでも読み替える */
+const DIR_MAP = { Reel: 'reel', GOGO: 'gogo', SE: 'se', BGM: 'bgm', Guide: 'guide' };
+const DIR_RE = /^\.\/(?:(?:ImJ|GoJ)\/)?(Reel|GOGO|SE|BGM|Guide)\//;
 function mPath(p) {
   if (typeof p !== 'string') return p;
-  for (const [from, k] of DIR_MAP) if (p.startsWith(from)) return MACHINE.dirs[k] + p.slice(from.length);
-  return p;
+  const m = p.match(DIR_RE);
+  return m ? MACHINE.dirs[DIR_MAP[m[1]]] + p.slice(m[0].length) : p;
 }
 function mPathAll(obj) { for (const k in obj) obj[k] = mPath(obj[k]); return obj; }
 /* 機種ごとの保存キー */
@@ -219,7 +227,7 @@ const PREM_LEVER_FF  = 0.004; // レバーONファンファーレ (叩いた瞬�
 const PREM_STRONG_GOGO = 0.03; // 強ガコッ! (告知音が通常より大きい)
 const PREM_TENPAI_MUJUN = 0.06; // テンパイ音矛盾 (鳴るはずが鳴らない / 鳴らないはずが鳴る) ※BB確定
 const STRONG_GOGO_VOL = 1.6;  // 強ガコッ!の音量倍率
-const BB_LIMIT   = 280;    // BB: 280枚を超える払い出しで終了
+const BB_LIMIT   = MACHINE.bbLimit; // BB: 機種別 (アイム280 / ゴーゴー3 266) を超える払い出しで終了
 const RB_LIMIT   = 98;     // RB: 98枚を超える払い出しで終了
 /* 「現在のボーナスをスキップ」で即時獲得する枚数(実質手取り)。
    払い出し上限(BB294枚/RB112枚)から、消化に必要なゲーム数×2BET分を差し引いた値。 */
@@ -231,7 +239,7 @@ const AUTO_LEVER_MS = 1000;// Auto Mode: BET(またはリプレイ確定)から�
 const AUTO_RENT_MS  = 1000;// Auto Mode: 自動貸出からBETまでの間隔
 const AUTO_SPEEDS   = [1, 2, 3, 4, 5]; // オート速度の選択肢
 const BET_CT_MS   = 100;   // BET操作後にレバーを受け付けないクールタイム(同時押し対策)
-const BB_SKIP_PAY = 252;   // 294 - 42 (21G分の2BET)
+const BB_SKIP_PAY = MACHINE.bbSkipPay; // 機種別の実際の獲得枚数 (アイム252 / ゴーゴー3 240)
 const RB_SKIP_PAY = 96;    // 112 - 16 (8G分の2BET)
 const PAY_CAP    = 15;     // 1ゲームの払い出し上限
 const COUNT_MS   = 100;    // メダル数字カウント & Get1.mp3ループ間隔 (調整用)
@@ -498,6 +506,7 @@ const BGM_FILES = {
   BBX2: './BGM/BBX2.mp3',                 // BB後半 (210〜294)
   BBHITX2: './BGM/BBhitX_2nd.mp3',        // セカンドゾーン突入
   BBX2ND: './BGM/BBX_2nd.mp3',            // セカンドゾーン中 (294〜336)
+  BB_A: './BGM/BB_A.mp3', BB_B: './BGM/BB_B.mp3', // ゴーゴー3: BB中に交互再生
   BBFINISHX2: './BGM/BBFinishX_2nd.mp3',  // セカンドゾーン終了
   FUNKY: './BGM/777.mp3'                  // シークレット曲 (777ver完走で解放)
 };
@@ -521,6 +530,7 @@ const BB_VERS = {
      これがないと BB0/RB0/総回転0 の状態で1G目や2〜5G目に当選しただけで
      軍艦マーチver・第九verが鳴ってしまう。 */
 function pickBBVersion(g) {
+  if (MACHINE_ID !== 'aime') return 'NORMAL'; // 軍艦マーチ等の楽曲バージョンはアイム専用
   if (!state.hadBonus) return 'NORMAL'; // 初回ボーナスは必ず通常ver
   if (g === 1) return 'SP';                          // 軍艦マーチ
   if (g >= 2 && g <= 5) return 'D9';                 // 第九
@@ -534,8 +544,11 @@ const SE_FILES = {
   STOP: './SE/Stop.mp3', STOP7: './SE/Stop7.mp3',
   GRAPE8: './SE/GetGrape8.mp3', GRAPE14: './SE/GetGrape14.mp3',
   GRAPE14SP: './SE/GetGrape14SP.mp3', GRAPE14X: './SE/GetGrape14X.mp3', CHERRY2: './SE/GetCherry2.mp3',
+  CLOWN10: './SE/GetClown10.mp3',
   GET1: './SE/Get1.mp3', GET1FIN: './SE/Get1Finish.mp3',
-  REPLAY: './SE/Replay.mp3', GOGO: './SE/GOGOCHANCE.mp3'
+  REPLAY: './SE/Replay.mp3', // リプレイ音のみ (ゴーゴー3: BET音と組み合わせ)
+  REPLAY1: './SE/Replay1.mp3', REPLAY2: './SE/Replay2.mp3', REPLAY3: './SE/Replay3.mp3', // リプレイ+BET音一体型 (アイム)
+  GOGO: './SE/GOGOCHANCE.mp3'
 };
 mPathAll(SE_FILES);
 
@@ -1515,12 +1528,12 @@ function lightLamp() {
   el.gogoLamp.classList.toggle('rainbow', state.rareLamp); // 中段チェリー時はレインボー
   $('gogoImgRainbow').hidden = !state.rareLamp; // CHANCE文字レインボー画像(GOGOCHANCE_2.png)
   /* 強ガコッ!: 告知音をいつもより大きく鳴らすプレミア */
-  audio.playSE('GOGO', true, state.premStrongGogo ? STRONG_GOGO_VOL : 1);
+  if (MACHINE.gogoSnd) audio.playSE('GOGO', true, state.premStrongGogo ? STRONG_GOGO_VOL : 1); // ゴーゴー3はペカ音なし
   if (state.premStrongGogo) {
     el.gogoLamp.classList.add('strong-gako');
     setTimeout(() => el.gogoLamp.classList.remove('strong-gako'), 900);
   }
-  state.gogoSndEnd = performance.now() + (state.seOn ? audio.duration('GOGO', 1200) : 0);
+  state.gogoSndEnd = performance.now() + (MACHINE.gogoSnd && state.seOn ? audio.duration('GOGO', 1200) : 0);
   /* 777ver: 77G目のBB当選点灯なら、GOGO音停止の1秒後から煽りループ(GOGOCHANCE_X)を再生 */
   if (!state.inBonus && state.bonusFlag === 'BB' && pickBBVersion(state.bbWinG || 0) === 'X') {
     const wait = (state.seOn ? audio.duration('GOGO', 1200) : 0) + 100; // GOGO音停止の0.1秒後
@@ -1704,6 +1717,7 @@ function resolveGame() {
       /* 角チェリー(2ライン成立)で払い出し2枚のケースは専用音(GetCherry2.mp3)を使う
          (3BET時の角チェリー / 非ボーナス1BET時の連チェリー、どちらも1枚×2ライン=2枚) */
       const cherryDouble = pay === 2 && wins.length > 0 && wins.every(w => w.role === 'CHERRY');
+      const hasClown = wins.some(w => w.role === 'CLOWN'); // ピエロ10枚は専用音(GetClown10.mp3)
       let sndMs;
       if (hasGrape || hasBell) {
         let key = pay >= 14 ? 'GRAPE14' : 'GRAPE8';
@@ -1715,6 +1729,11 @@ function resolveGame() {
         else audio.playSE(key);
         sndMs = audio.duration(key, 900);
         animateMedals(aMs(COUNT_MS), gogoWait); // 1枚ずつ加算表示(オート倍速追従)
+      } else if (hasClown) {
+        if (gogoWait > 0) setTimeout(() => audio.playSE('CLOWN10'), gogoWait);
+        else audio.playSE('CLOWN10');
+        sndMs = audio.duration('CLOWN10', 700);
+        animateMedals(aMs(COUNT_MS), gogoWait);
       } else if (cherryDouble) {
         if (gogoWait > 0) setTimeout(() => audio.playSE('CHERRY2'), gogoWait);
         else audio.playSE('CHERRY2');
@@ -1747,9 +1766,12 @@ function resolveGame() {
       state.replayPending = bet;
       message('REPLAY! もう一度レバーON!');
       const gogoWaitR = Math.max(0, state.gogoSndEnd - performance.now());
-      /* リプレイ音(Replay.mp3) + 揃ったBET数と同じBET音を同時に鳴らす
-         (旧ReplayBet.mp3は常に3BET音固定だったバグの修正。再生タイミングは今後調整予定) */
-      const playReplaySnd = () => { audio.playSE('REPLAY'); audio.playSE(betSEKeyFor(bet)); };
+      /* リプレイ音 (旧ReplayBet.mp3は常に3BET音固定だったバグの修正。再生タイミングは今後調整予定)
+         アイム    : Replay1/2/3.mp3 (リプレイ+BET音一体型) をBET数で選択
+         ゴーゴー3 : Replay.mp3 + BET数に応じたBET音(Bet/MaxBet2/MaxBet3)を同時再生 */
+      const playReplaySnd = MACHINE.replaySplit
+        ? () => { audio.playSE('REPLAY'); audio.playSE(betSEKeyFor(bet)); }
+        : () => audio.playSE(bet >= 3 ? 'REPLAY3' : bet === 2 ? 'REPLAY2' : 'REPLAY1');
       if (gogoWaitR > 0) setTimeout(playReplaySnd, gogoWaitR);
       else playReplaySnd();
     }
@@ -1765,6 +1787,10 @@ function resolveGame() {
         if (state.bonusType === 'BB' && state.bonusVer === 'X' && state.xMode === 1) xEnterSecond(payoutSndMs); // 777ver: 294枚→セカンドゾーンへ!!
         else endBonus(payoutSndMs);
       } else {
+        /* ゴーゴー3: 切替COUNTに達したら、GetGrape14の再生終了と同時にBB_A⇔BB_Bを切り替え */
+        if (MACHINE_ID === 'gogo' && state.bonusType === 'BB' && GOGO_BB_SWITCH.includes(state.bonusPaid)) {
+          setTimeout(() => { if (state.inBonus && state.bonusType === 'BB') audio.playBGM(bbLoopKey()); }, payoutSndMs);
+        }
         message(`${state.bonusType === 'BB' ? 'BIG' : 'REGULAR'} BONUS 中!  ${state.bonusPaid} / ${limit}枚`);
       }
     } else if (!hasReplay) {
@@ -2179,10 +2205,15 @@ function xEnterSecond(payoutSndMs) {
   }, Math.max(0, payoutSndMs));
 }
 
+/* ゴーゴー3のBB中BGM切替COUNT: 0〜56=A / 56〜112=B / 112〜154=A / 154〜196=B / 196〜238=A / 238〜280=B */
+const GOGO_BB_SWITCH = [56, 112, 154, 196, 238];
 /* ボーナス中BGMの再開キー (リロード復帰・BGMトグル用。777verは進行段階に応じた曲) */
 function bbLoopKey() {
   if (state.bonusVer === 'X' && state.bonusType === 'BB') {
     return state.xMode === 2 ? 'BBX2ND' : (state.bonusPaid >= 210 ? 'BBX2' : 'BBX1');
+  }
+  if (MACHINE_ID === 'gogo' && state.bonusType === 'BB') {
+    return GOGO_BB_SWITCH.filter(t => state.bonusPaid >= t).length % 2 === 0 ? 'BB_A' : 'BB_B';
   }
   return (BB_VERS[state.bonusVer] || BB_VERS.NORMAL).loop;
 }
@@ -2217,7 +2248,7 @@ function startBonus(type) {
   if (sesB >= 10) mSet('ses10');
   unlightLamp();
   el.topBanner.classList.add('bonus-flash');
-  message(type === 'BB' ? 'BIG BONUS!! (最大+252枚)' : 'REGULAR BONUS!! (最大+96枚)', true);
+  message(type === 'BB' ? `BIG BONUS!! (最大+${BB_SKIP_PAY}枚)` : `REGULAR BONUS!! (最大+${RB_SKIP_PAY}枚)`, true);
   if (type === 'BB') {
     /* 当選G数から楽曲バージョンを決定 */
     state.bonusVer = pickBBVersion(state.bbWinG || 0);
@@ -2235,7 +2266,7 @@ function startBonus(type) {
       state.bbHitPlaying = true; /* hit再生中はensure()のBGM復帰を割り込ませない */
       audio.playBGMOnce(hit, () => {
         state.bbHitPlaying = false;
-        if (state.inBonus && state.bonusType === 'BB') audio.playBGM(v.loop);
+        if (state.inBonus && state.bonusType === 'BB') audio.playBGM(bbLoopKey()); // ゴーゴー3はBB_Aから
         refreshSkipBtn(); // BB系BGM開始と同時にスキップ有効化
         updateUI();
       });
@@ -3041,9 +3072,10 @@ function bindEvents() {
   /* --- 起動時: 機種名表示とGOGOランプ画像を選択中の機種に合わせる --- */
   document.title = MACHINE.name + ' ' + APP_VER;
   document.querySelectorAll('.dp-name').forEach(n => { n.textContent = MACHINE.name + ' ' + APP_VER; });
-  ['gogoImg', 'gogoImgOn', 'gogoImgRainbow'].forEach(id => {
-    const im = $(id);
-    if (!im) return;
+  const ptBig = document.querySelector('#payTable .pt-big-note'); // 小役一覧のBB獲得枚数も機種別に
+  if (ptBig) ptBig.textContent = `最大+${BB_SKIP_PAY}枚`;
+  /* HTML内の画像(GOGOランプ・小役一覧・リール配列)を選択中の機種フォルダに読み替え */
+  document.querySelectorAll('img[src]').forEach(im => {
     const cur = im.getAttribute('src'), next = mPath(cur);
     if (next !== cur) im.src = next;
   });

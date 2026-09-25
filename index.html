@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>アイムジャグラーEX (6号機) v4.3</title>
+<title>アイムジャグラーEX (6号機) v5.0</title>
 <link rel="icon" type="image/png" href="./icon/gogo.png">
 <link rel="apple-touch-icon" href="./icon/gogo.png">
 <meta name="theme-color" content="#101014">
@@ -18,7 +18,7 @@
   <header id="dataPanel">
     <div class="dp-top">
       <span class="dp-unit">0001番台</span>
-      <span class="dp-name">アイムジャグラーEX (6号機) v4.3</span>
+      <span class="dp-name">アイムジャグラーEX (6号機) v5.0</span>
       <button class="dp-auto" id="dpAuto">Auto</button>
       <button class="dp-vol" id="btnVolPop">♪</button>
     </div>
@@ -95,9 +95,9 @@
       <!-- ランプ + 7セグ -->
       <div id="underReel">
         <div id="gogoLamp">
-          <img id="gogoImg" src="./GOGO/GOGOCHANCE_0.png" alt="GOGO!CHANCE" draggable="false">
-          <img id="gogoImgOn" src="./GOGO/GOGOCHANCE_1.png" alt="" draggable="false" hidden>
-          <img id="gogoImgRainbow" src="./GOGO/GOGOCHANCE_2.png" alt="" draggable="false" hidden>
+          <img id="gogoImg" src="./ImJ/GOGO/GOGOCHANCE_0.png" alt="GOGO!CHANCE" draggable="false">
+          <img id="gogoImgOn" src="./ImJ/GOGO/GOGOCHANCE_1.png" alt="" draggable="false" hidden>
+          <img id="gogoImgRainbow" src="./ImJ/GOGO/GOGOCHANCE_2.png" alt="" draggable="false" hidden>
         </div>
         <div id="segArea">
           <div class="seg-box">
@@ -461,7 +461,7 @@
       <h2>リール配列</h2>
       <div class="rg-head"><span>左</span><span>中</span><span>右</span></div>
       <div class="rg-body">
-        <img id="reelGuideImg" src="./Guide/Reel.png" alt="リール配列表" draggable="false" loading="lazy">
+        <img id="reelGuideImg" src="./ImJ/Guide/Reel.png" alt="リール配列表" draggable="false" loading="lazy">
       </div>
       <button class="sub-close" id="btnCloseReelGuide">閉じる</button>
     </div>
@@ -472,15 +472,15 @@
     <div id="payModal">
       <h2>小役一覧</h2>
       <table id="payTable">
-        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./Guide/7.png" alt="7" draggable="false"><img src="./Guide/7.png" alt="7" draggable="false"><img src="./Guide/7.png" alt="7" draggable="false"></span></td><td>BIG BONUS<small>最大+252枚</small></td></tr>
-        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./Guide/7.png" alt="7" draggable="false"><img src="./Guide/7.png" alt="7" draggable="false"><img src="./Guide/BAR.png" alt="BAR" draggable="false"></span></td><td>REGULAR BONUS<small>最大+96枚</small></td></tr>
-        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./Guide/Bell.png" alt="Bell" draggable="false"><img src="./Guide/Bell.png" alt="Bell" draggable="false"><img src="./Guide/Bell.png" alt="Bell" draggable="false"></span></td><td><b>14枚</b></td></tr>
-        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./Guide/Clown.png" alt="Clown" draggable="false"><img src="./Guide/Clown.png" alt="Clown" draggable="false"><img src="./Guide/Clown.png" alt="Clown" draggable="false"></span></td><td><b>10枚</b></td></tr>
-        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./Guide/Grape.png" alt="Grape" draggable="false"><img src="./Guide/Grape.png" alt="Grape" draggable="false"><img src="./Guide/Grape.png" alt="Grape" draggable="false"></span></td><td><b>8枚</b><small>2BET時のみ 14枚</small></td></tr>
-        <tr><td class="pt-sym"><span class="pt-imgs pt-cherry"><img src="./Guide/Cherry.png" alt="Cherry" draggable="false"><img src="./Guide/Cherry2.png" alt="Cherry2" draggable="false"></span></td><td><b>1枚</b><small>1･2BET時 7枚 / ライン毎(角=2ライン分)</small></td></tr>
-        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./Guide/Replay.png" alt="Replay" draggable="false"><img src="./Guide/Replay.png" alt="Replay" draggable="false"><img src="./Guide/Replay.png" alt="Replay" draggable="false"></span></td><td>リプレイ<small>再遊技</small></td></tr>
+        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./ImJ/Guide/7.png" alt="7" draggable="false"><img src="./ImJ/Guide/7.png" alt="7" draggable="false"><img src="./ImJ/Guide/7.png" alt="7" draggable="false"></span></td><td>BIG BONUS<small class="pt-big-note">最大+252枚</small></td></tr>
+        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./ImJ/Guide/7.png" alt="7" draggable="false"><img src="./ImJ/Guide/7.png" alt="7" draggable="false"><img src="./ImJ/Guide/BAR.png" alt="BAR" draggable="false"></span></td><td>REGULAR BONUS<small>最大+96枚</small></td></tr>
+        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./ImJ/Guide/Bell.png" alt="Bell" draggable="false"><img src="./ImJ/Guide/Bell.png" alt="Bell" draggable="false"><img src="./ImJ/Guide/Bell.png" alt="Bell" draggable="false"></span></td><td><b>14枚</b></td></tr>
+        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./ImJ/Guide/Clown.png" alt="Clown" draggable="false"><img src="./ImJ/Guide/Clown.png" alt="Clown" draggable="false"><img src="./ImJ/Guide/Clown.png" alt="Clown" draggable="false"></span></td><td><b>10枚</b></td></tr>
+        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./ImJ/Guide/Grape.png" alt="Grape" draggable="false"><img src="./ImJ/Guide/Grape.png" alt="Grape" draggable="false"><img src="./ImJ/Guide/Grape.png" alt="Grape" draggable="false"></span></td><td><b>8枚</b><small>2BET時のみ 14枚</small></td></tr>
+        <tr><td class="pt-sym"><span class="pt-imgs pt-cherry"><img src="./ImJ/Guide/Cherry.png" alt="Cherry" draggable="false"><img src="./ImJ/Guide/Cherry2.png" alt="Cherry2" draggable="false"></span></td><td><b>1枚</b><small>1･2BET時 7枚 / ライン毎(角=2ライン分)</small></td></tr>
+        <tr><td class="pt-sym"><span class="pt-imgs"><img src="./ImJ/Guide/Replay.png" alt="Replay" draggable="false"><img src="./ImJ/Guide/Replay.png" alt="Replay" draggable="false"><img src="./ImJ/Guide/Replay.png" alt="Replay" draggable="false"></span></td><td>リプレイ<small>再遊技</small></td></tr>
       </table>
-      <p class="pay-note">※ボーナス中は2BET固定・毎ゲーム<img class="pn-img" src="./Guide/Grape.png" alt="ブドウ" draggable="false">(14枚)</p>
+      <p class="pay-note">※ボーナス中は2BET固定・毎ゲーム<img class="pn-img" src="./ImJ/Guide/Grape.png" alt="ブドウ" draggable="false">(14枚)</p>
       <button id="btnClosePay">閉じる</button>
     </div>
   </div>
