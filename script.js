@@ -533,7 +533,7 @@ const SE_FILES = {
   LEVER: './SE/Lever.mp3', LEVERSP: './SE/LeverSP.mp3', WAIT: './SE/Wait.mp3',
   STOP: './SE/Stop.mp3', STOP7: './SE/Stop7.mp3',
   GRAPE8: './SE/GetGrape8.mp3', GRAPE14: './SE/GetGrape14.mp3',
-  GRAPE14SP: './SE/GetGrape14SP.mp3', GRAPE14X: './SE/GetGrape14X.mp3',
+  GRAPE14SP: './SE/GetGrape14SP.mp3', GRAPE14X: './SE/GetGrape14X.mp3', CHERRY2: './SE/GetCherry2.mp3',
   GET1: './SE/Get1.mp3', GET1FIN: './SE/Get1Finish.mp3',
   REPLAY: './SE/Replay.mp3', GOGO: './SE/GOGOCHANCE.mp3'
 };
@@ -1701,6 +1701,9 @@ function resolveGame() {
       /* 払い出し音: ブドウ8枚/14枚とベル14枚は専用音、他はGet1ループ→Get1Finish */
       const hasGrape = wins.some(w => w.role === 'GRAPE');
       const hasBell = wins.some(w => w.role === 'BELL');
+      /* 角チェリー(2ライン成立)で払い出し2枚のケースは専用音(GetCherry2.mp3)を使う
+         (3BET時の角チェリー / 非ボーナス1BET時の連チェリー、どちらも1枚×2ライン=2枚) */
+      const cherryDouble = pay === 2 && wins.length > 0 && wins.every(w => w.role === 'CHERRY');
       let sndMs;
       if (hasGrape || hasBell) {
         let key = pay >= 14 ? 'GRAPE14' : 'GRAPE8';
@@ -1712,6 +1715,11 @@ function resolveGame() {
         else audio.playSE(key);
         sndMs = audio.duration(key, 900);
         animateMedals(aMs(COUNT_MS), gogoWait); // 1枚ずつ加算表示(オート倍速追従)
+      } else if (cherryDouble) {
+        if (gogoWait > 0) setTimeout(() => audio.playSE('CHERRY2'), gogoWait);
+        else audio.playSE('CHERRY2');
+        sndMs = audio.duration('CHERRY2', 700);
+        animateMedals(aMs(COUNT_MS), gogoWait); // 2枚を専用音に合わせて表示
       } else {
         if (gogoWait > 0) setTimeout(() => audio.get1Loop(pay), gogoWait);
         else audio.get1Loop(pay); // ピエロ・チェリー等: (枚数-1)回ループ後にGet1Finish
