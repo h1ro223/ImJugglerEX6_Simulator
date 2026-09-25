@@ -1,8 +1,8 @@
-# ImJugglerEX6_Simulator
-アイムジャグラーex 6号機のシミュレーターです
+# ジャグラーシミュレーター
+アイムジャグラーex 6号機・ゴーゴージャグラー3のシミュレーターです
 Claudeを使用
 
-https://h1ro223.github.io/ImJugglerEX6_Simulator/
+https://h1ro223.github.io/Juggler_Simulator/
 
 
 ©KITAC
