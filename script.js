@@ -535,7 +535,7 @@ const SE_FILES = {
   GRAPE8: './SE/GetGrape8.mp3', GRAPE14: './SE/GetGrape14.mp3',
   GRAPE14SP: './SE/GetGrape14SP.mp3', GRAPE14X: './SE/GetGrape14X.mp3',
   GET1: './SE/Get1.mp3', GET1FIN: './SE/Get1Finish.mp3',
-  REPLAY: './SE/ReplayBet.mp3', GOGO: './SE/GOGOCHANCE.mp3'
+  REPLAY: './SE/Replay.mp3', GOGO: './SE/GOGOCHANCE.mp3'
 };
 mPathAll(SE_FILES);
 
@@ -1258,6 +1258,9 @@ function leverSEKey() {
   return 'LEVER';
 }
 
+/* リプレイ成立時、揃ったBET数に応じて鳴らすBET音のSEキー(1枚=BET/2枚=MAXBET2/3枚=MAXBET3) */
+function betSEKeyFor(bet) { return bet >= 3 ? 'MAXBET3' : bet === 2 ? 'MAXBET2' : 'BET'; }
+
 /* LeverSPと重ねて鳴らす通常Lever.mp3の音量倍率(ギリギリ聞こえる程度) */
 const LEVER_SUB_VOL = 0.22;
 
@@ -1736,8 +1739,11 @@ function resolveGame() {
       state.replayPending = bet;
       message('REPLAY! もう一度レバーON!');
       const gogoWaitR = Math.max(0, state.gogoSndEnd - performance.now());
-      if (gogoWaitR > 0) setTimeout(() => audio.playSE('REPLAY'), gogoWaitR);
-      else audio.playSE('REPLAY');
+      /* リプレイ音(Replay.mp3) + 揃ったBET数と同じBET音を同時に鳴らす
+         (旧ReplayBet.mp3は常に3BET音固定だったバグの修正。再生タイミングは今後調整予定) */
+      const playReplaySnd = () => { audio.playSE('REPLAY'); audio.playSE(betSEKeyFor(bet)); };
+      if (gogoWaitR > 0) setTimeout(playReplaySnd, gogoWaitR);
+      else playReplaySnd();
     }
 
     /* ボーナス中の進行 */
