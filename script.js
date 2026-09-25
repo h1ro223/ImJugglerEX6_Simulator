@@ -50,7 +50,7 @@ const MACHINES = {
     bbSkipPay: 240,      // BB: 実際の獲得枚数 (アイムより-12)
     gogoSnd: false,      // ペカ音なし
     replaySplit: true,   // リプレイ音: Replay.mp3 → 再生終了後にBET数に応じたBET音
-    bbHitWait: 1000      // BBhit1/2終了→BB_A開始までの待ち(ms) ※一時的な設定
+    bbHitWait: 500      // BBhit1/2終了→BB_A開始までの待ち(ms) ※一時的な設定
   }
 };
 const MACHINE_ID = (() => {
