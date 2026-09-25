@@ -50,7 +50,7 @@ const MACHINES = {
     bbSkipPay: 240,      // BB: 実際の獲得枚数 (アイムより-12)
     gogoSnd: false,      // ペカ音なし
     replaySplit: true,   // リプレイ音: Replay.mp3 → 再生終了後にBET数に応じたBET音
-    bbHitWait: 500      // BBhit1/2終了→BB_A開始までの待ち(ms) ※一時的な設定
+    bbHitWait: 1000      // BBhit1/2終了→BB_A開始までの待ち(ms) ※一時的な設定
   }
 };
 const MACHINE_ID = (() => {
@@ -67,6 +67,12 @@ function mPath(p) {
   if (typeof p !== 'string') return p;
   const m = p.match(DIR_RE);
   return m ? MACHINE.dirs[DIR_MAP[m[1]]] + p.slice(m[0].length) : p;
+}
+/* 指定した機種のフォルダに読み替える (プレイ中の機種と関係なく使う: サウンドルーム用) */
+function machinePath(id, p) {
+  if (typeof p !== 'string' || !MACHINES[id]) return p;
+  const m = p.match(DIR_RE);
+  return m ? MACHINES[id].dirs[DIR_MAP[m[1]]] + p.slice(m[0].length) : p;
 }
 function mPathAll(obj) { for (const k in obj) obj[k] = mPath(obj[k]); return obj; }
 /* 機種ごとの保存キー */
@@ -3590,8 +3596,10 @@ function bindEvents() {
   $('btnCloseBonusLog').addEventListener('click', () => { $('bonusLogOverlay').hidden = true; });
   $('missionOverlay').addEventListener('click', e => { if (e.target === $('missionOverlay')) $('missionOverlay').hidden = true; });
 
-  /* --- サウンドルーム (音楽プレイヤー) --- */
-  const SR_TRACKS = [
+  /* --- サウンドルーム (音楽プレイヤー) ---
+     機種タブで曲リストを切り替え (プレイ中の機種とは独立して選べる) */
+  const SR_LISTS = {};
+  SR_LISTS.aime = [
     { g: '通常ver',       key: 'BBHIT1',      name: 'BB当選ファンファーレ 1' },
     { g: '通常ver',       key: 'BBHIT2',      name: 'BB当選ファンファーレ 2' },
     { g: '通常ver',       key: 'BB',          name: 'BB中BGM' },
@@ -3616,6 +3624,16 @@ function bindEvents() {
     { g: 'REGULAR BONUS', key: 'RB',          name: 'RB中BGM' },
     { g: 'SPECIAL',       key: 'FUNKY',       name: "I'm FUNKY JUGGLER", secret: true }
   ];
+  SR_LISTS.gogo = [ // ゴーゴー3: 通常BBとRBのみ (楽曲バージョン系はアイム専用)
+    { g: '通常ver',       key: 'BBHIT1',   name: 'BB当選ファンファーレ 1' },
+    { g: '通常ver',       key: 'BBHIT2',   name: 'BB当選ファンファーレ 2' },
+    { g: '通常ver',       key: 'BB_A',     name: 'BB中BGM (A)' },
+    { g: '通常ver',       key: 'BB_B',     name: 'BB中BGM (B)' },
+    { g: '通常ver',       key: 'BBFINISH', name: 'BB終了' },
+    { g: 'REGULAR BONUS', key: 'RB',       name: 'RB中BGM' }
+  ];
+  let srMachine = MACHINE_ID;                         // サウンドルームで表示中の機種
+  let SR_TRACKS = SR_LISTS[srMachine] || SR_LISTS.aime;
   const srAudio = new Audio();
   let srIdx = -1, srLoop = false, srVol = 0.5;
   const srFmt = s => { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
@@ -3635,7 +3653,7 @@ function bindEvents() {
     if (state.inBonus) { askConfirm('ボーナス中は再生できません。\nボーナス終了後にお楽しみください!', null, true); return; }
     audio.stopBGM(); // ゲーム側BGMと被らないように
     srIdx = (i + SR_TRACKS.length) % SR_TRACKS.length;
-    srAudio.src = BGM_FILES[SR_TRACKS[srIdx].key];
+    srAudio.src = machinePath(srMachine, BGM_FILES[SR_TRACKS[srIdx].key]); // 選択中タブの機種フォルダから再生
     srAudio.loop = srLoop; // ブラウザ内部ループで途切れなし
     srApplyVol();
     srAudio.currentTime = 0;
@@ -3680,6 +3698,29 @@ function bindEvents() {
       wrap.appendChild(b);
     });
   }
+  /* 機種タブ (アイム / ゴーゴー3 …) */
+  function buildSrTabs() {
+    const box = $('srMachineTabs');
+    box.textContent = '';
+    for (const id in MACHINES) {
+      if (!SR_LISTS[id]) continue;
+      const b = document.createElement('button');
+      b.className = 'sr-mtab' + (id === srMachine ? ' on' : '');
+      b.textContent = MACHINES[id].name.replace(' (6号機)', '');
+      b.addEventListener('click', () => {
+        if (id === srMachine) return;
+        srStop();
+        srMachine = id;
+        SR_TRACKS = SR_LISTS[id];
+        buildSrTabs();
+        buildSrList();
+        srRefreshList();
+        $('srList').scrollTop = 0;
+      });
+      box.appendChild(b);
+    }
+  }
+  buildSrTabs();
   buildSrList();
   $('srPlay').addEventListener('click', () => {
     if (srIdx < 0) { srPlayTrack(0); return; }
@@ -3713,6 +3754,10 @@ function bindEvents() {
   stopSoundRoom = srStop; // メニュー一括クローズ時にも曲を停止
   $('btnCatSound').addEventListener('click', () => {
     audio.ensure();
+    /* 開くたびにプレイ中の機種のタブから (FUNKY解放後の初回演出はアイムのリストで行う) */
+    const want = (isFunkyUnlocked() && !mstore.st.funkySeen) ? 'aime' : MACHINE_ID;
+    if (srMachine !== want) { srStop(); srMachine = want; SR_TRACKS = SR_LISTS[want] || SR_LISTS.aime; }
+    buildSrTabs();
     buildSrList();
     srRefreshList();
     $('soundOverlay').hidden = false;
