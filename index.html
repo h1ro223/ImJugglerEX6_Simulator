@@ -3,11 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>アイムジャグラーEX (6号機) v4.2</title>
+<title>アイムジャグラーEX (6号機) v4.3</title>
 <link rel="icon" type="image/png" href="./icon/gogo.png">
 <link rel="apple-touch-icon" href="./icon/gogo.png">
 <meta name="theme-color" content="#101014">
 <link rel="stylesheet" href="./style.css">
+<!-- 機種ごとのフレーム色を描画前に適用 (赤→ピンクのちらつき防止) -->
+<script>try{var m=localStorage.getItem('juggler_machine');document.documentElement.setAttribute('data-machine',m||'aime');}catch(e){}</script>
 </head>
 <body>
 <div id="app">
@@ -16,7 +18,7 @@
   <header id="dataPanel">
     <div class="dp-top">
       <span class="dp-unit">0001番台</span>
-      <span class="dp-name">アイムジャグラーEX (6号機) v4.2</span>
+      <span class="dp-name">アイムジャグラーEX (6号機) v4.3</span>
       <button class="dp-auto" id="dpAuto">Auto</button>
       <button class="dp-vol" id="btnVolPop">♪</button>
     </div>
@@ -151,6 +153,7 @@
     <div id="modal">
       <h2>MENU</h2>
       <div id="menuBtns">
+        <button class="menu-btn model-menu" id="btnCatModel">機種選択</button>
         <button class="menu-btn" id="btnCatMinigame">ミニゲーム</button>
         <button class="menu-btn" id="btnCatMission">ミッション</button>
         <button class="menu-btn" id="btnCatSound">サウンドルーム</button>
@@ -300,6 +303,16 @@
       </div>
       <div id="srList"></div>
       <button class="sub-close" id="btnCloseSound">閉じる</button>
+    </div>
+  </div>
+
+  <!-- ▼ 機種選択ポップアップ ▼ -->
+  <div id="modelOverlay" class="sub-overlay" hidden>
+    <div id="modelModal" class="sub-modal">
+      <h2>機種選択</h2>
+      <div id="modelBtns"></div>
+      <p class="model-note">※データ(収支・ミッション・目押しTA記録)は機種ごとに別々に保存されます</p>
+      <button class="sub-close" id="btnCloseModel">閉じる</button>
     </div>
   </div>
 

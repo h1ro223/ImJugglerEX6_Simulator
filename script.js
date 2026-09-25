@@ -4,6 +4,71 @@
    ========================================================== */
 'use strict';
 
+/* ================= 機種定義 (v4.3〜 機種切り替えシステム) =================
+   機種ごとに違うもの(名前・設定差・素材フォルダ・保存キー)だけをここに持たせ、
+   ゲーム進行ロジックは全機種共通で使い回す。
+   ・settings : 設定1〜6の確率 (index0 = 設定1)
+   ・dirs     : 素材フォルダ。専用素材が揃ったら './GoJ/SE/' のように書き換えるだけで差し替わる
+   ・saveSuffix: 保存キーの末尾 (アイムは空=v4.2以前のセーブデータをそのまま引き継ぐ)
+   ※機種を追加する時は MACHINES にもう1つ足し、style.css の [data-machine="〇〇"] で色を上書きする */
+const APP_VER = 'v4.3';
+const MACHINE_KEY = 'juggler_machine'; // 選択中の機種ID (index.htmlの<head>内スクリプトと同じキー)
+const MACHINES = {
+  aime: {
+    name: 'アイムジャグラーEX (6号機)',
+    short: 'アイム',
+    settings: [ // 本家6号機アイムジャグラーEX準拠
+      { bb: 1/273.1, rb: 1/439.8, grape: 1/6.02 },
+      { bb: 1/269.7, rb: 1/399.6, grape: 1/6.02 },
+      { bb: 1/269.7, rb: 1/331.0, grape: 1/6.02 },
+      { bb: 1/259.0, rb: 1/315.1, grape: 1/6.02 },
+      { bb: 1/259.0, rb: 1/255.0, grape: 1/6.02 },
+      { bb: 1/255.0, rb: 1/255.0, grape: 1/5.85 }
+    ],
+    dirs: { reel: './Reel/', gogo: './GOGO/', se: './SE/', bgm: './BGM/' },
+    saveSuffix: ''
+  },
+  gogo: {
+    name: 'ゴーゴージャグラー',
+    short: 'ゴーゴー',
+    settings: [ // ブドウはアイムと同値で仮置き
+      { bb: 1/259.0, rb: 1/354.2, grape: 1/6.02 },
+      { bb: 1/258.0, rb: 1/332.7, grape: 1/6.02 },
+      { bb: 1/257.0, rb: 1/306.2, grape: 1/6.02 },
+      { bb: 1/254.0, rb: 1/268.6, grape: 1/6.02 },
+      { bb: 1/247.3, rb: 1/247.3, grape: 1/6.02 },
+      { bb: 1/234.9, rb: 1/234.9, grape: 1/5.85 }
+    ],
+    /* 専用素材が揃うまではアイムの素材を一時流用。
+       例) GOGOランプだけ差し替える → gogo: './GoJ/GOGO/' に変更 */
+    dirs: { reel: './Reel/', gogo: './GOGO/', se: './SE/', bgm: './BGM/' },
+    saveSuffix: '_gogo'
+  }
+};
+const MACHINE_ID = (() => {
+  try { const id = localStorage.getItem(MACHINE_KEY); if (id && MACHINES[id]) return id; } catch (e) {}
+  return 'aime';
+})();
+const MACHINE = MACHINES[MACHINE_ID];
+document.documentElement.dataset.machine = MACHINE_ID; // CSSのフレーム色切り替え用
+/* 素材パスを選択中の機種のフォルダに読み替える ('./SE/Bet.mp3' → dirs.se + 'Bet.mp3') */
+const DIR_MAP = [['./Reel/', 'reel'], ['./GOGO/', 'gogo'], ['./SE/', 'se'], ['./BGM/', 'bgm']];
+function mPath(p) {
+  if (typeof p !== 'string') return p;
+  for (const [from, k] of DIR_MAP) if (p.startsWith(from)) return MACHINE.dirs[k] + p.slice(from.length);
+  return p;
+}
+function mPathAll(obj) { for (const k in obj) obj[k] = mPath(obj[k]); return obj; }
+/* 機種ごとの保存キー */
+function machineKeys(id) {
+  const sfx = (MACHINES[id] || MACHINES.aime).saveSuffix;
+  return {
+    save: 'imjuggler_ex_6_save_v1' + sfx,
+    missions: 'imjuggler_ex_6_missions_v1' + sfx,
+    taBest: 'imjuggler_ex_6_ta_best_v1' + sfx
+  };
+}
+
 /* ================= 定数 ================= */
 const SYM = { GRAPE: 1, CHERRY: 2, CLOWN: 3, BELL: 4, REPLAY: 5, BAR: 6, SEVEN: 7 };
 const SYM_IMG = {
@@ -19,6 +84,7 @@ const SYM_IMG = {
 const REEL_IMG_ALT = {
   C2: './Reel/Cherry2.png'   // 葉っぱ2枚のチェリー(レアチェリーB)
 };
+mPathAll(SYM_IMG); mPathAll(REEL_IMG_ALT); // 機種別フォルダに読み替え
 /* リール別の差し替え位置 { index: 画像キー }  ※index0=窓の上段 */
 const REEL_IMG_OVERRIDE = [
   { 16: 'C2' }, // 左リール index16 のチェリー
@@ -48,15 +114,8 @@ const LINES = [
   [2,1,0]  // 右上がり
 ];
 
-/* 設定別確率 (index0 = 設定1) 本家6号機アイムジャグラーEX準拠 */
-const SETTINGS = [
-  { bb: 1/273.1, rb: 1/439.8, grape: 1/6.02 },
-  { bb: 1/269.7, rb: 1/399.6, grape: 1/6.02 },
-  { bb: 1/269.7, rb: 1/331.0, grape: 1/6.02 },
-  { bb: 1/259.0, rb: 1/315.1, grape: 1/6.02 },
-  { bb: 1/259.0, rb: 1/255.0, grape: 1/6.02 },
-  { bb: 1/255.0, rb: 1/255.0, grape: 1/5.85 }
-];
+/* 設定別確率 (index0 = 設定1) → 選択中の機種の値を使う (定義は先頭の MACHINES) */
+const SETTINGS = MACHINE.settings;
 const P_REPLAY = 1/7.298;
 const P_CHERRY = 1/38.1;
 const P_BELL   = 1/1092.3;
@@ -177,8 +236,8 @@ const RB_SKIP_PAY = 96;    // 112 - 16 (8G分の2BET)
 const PAY_CAP    = 15;     // 1ゲームの払い出し上限
 const COUNT_MS   = 100;    // メダル数字カウント & Get1.mp3ループ間隔 (調整用)
 const CREDIT_MAX = 50;
-const SAVE_KEY   = 'imjuggler_ex_6_save_v1';
-const MISSION_SAVE_KEY = 'imjuggler_ex_6_missions_v1'; // ミッション進捗(生涯記録・進捗リセットでのみ消去)
+const SAVE_KEY   = machineKeys(MACHINE_ID).save;     // 機種ごとに別保存 (アイムは従来のキーのまま)
+const MISSION_SAVE_KEY = machineKeys(MACHINE_ID).missions; // ミッション進捗(生涯記録・進捗リセットでのみ消去)
 /* ================= ミッション (実績システム) ================= */
 /* 進捗は生涯記録としてMISSION_SAVE_KEYに保存。
    データリセット/全リセットでは消えず、システム設定の「ミッション・進捗リセット」でのみ初期化 */
@@ -442,6 +501,7 @@ const BGM_FILES = {
   BBFINISHX2: './BGM/BBFinishX_2nd.mp3',  // セカンドゾーン終了
   FUNKY: './BGM/777.mp3'                  // シークレット曲 (777ver完走で解放)
 };
+mPathAll(BGM_FILES);
 
 /* BBボーナス楽曲バージョン定義 (hit: null=BBhit1/2の50%抽選, 'NONE'=hitなし即ループ) */
 /* BGM曲別の音量倍率 (未指定は1.0) */
@@ -477,6 +537,7 @@ const SE_FILES = {
   GET1: './SE/Get1.mp3', GET1FIN: './SE/Get1Finish.mp3',
   REPLAY: './SE/ReplayBet.mp3', GOGO: './SE/GOGOCHANCE.mp3'
 };
+mPathAll(SE_FILES);
 
 const audio = {
   ctx: null, buffers: {}, seGain: null, bgmGain: null,
@@ -1808,7 +1869,7 @@ function setDataMode(on) {
      phase 'ready'   … ペカ済み。次のレバーONで計測開始
      phase 'running' … 計測中
      phase 'done'    … 結果表示中 */
-const TA_BEST_KEY = 'imjuggler_ex_6_ta_best_v1';
+const TA_BEST_KEY = machineKeys(MACHINE_ID).taBest;
 
 function taLoadBest() {
   try { const v = Number(localStorage.getItem(TA_BEST_KEY)); return (isFinite(v) && v > 0) ? v : 0; }
@@ -2963,6 +3024,55 @@ function bindEvents() {
   $('btnCloseModal').addEventListener('click', closeModal);
   el.modalOverlay.addEventListener('click', e => { if (e.target === el.modalOverlay) closeModal(); });
 
+  /* --- 起動時: 機種名表示とGOGOランプ画像を選択中の機種に合わせる --- */
+  document.title = MACHINE.name + ' ' + APP_VER;
+  document.querySelectorAll('.dp-name').forEach(n => { n.textContent = MACHINE.name + ' ' + APP_VER; });
+  ['gogoImg', 'gogoImgOn', 'gogoImgRainbow'].forEach(id => {
+    const im = $(id);
+    if (!im) return;
+    const cur = im.getAttribute('src'), next = mPath(cur);
+    if (next !== cur) im.src = next;
+  });
+
+  /* --- 機種選択 --- */
+  const modelOverlay = $('modelOverlay');
+  const renderModelBtns = () => {
+    const box = $('modelBtns');
+    box.textContent = '';
+    for (const id in MACHINES) {
+      const m = MACHINES[id];
+      const b = document.createElement('button');
+      b.className = 'menu-btn model-btn' + (id === MACHINE_ID ? ' current' : '');
+      b.dataset.m = id;
+      b.textContent = m.name;
+      if (id === MACHINE_ID) { const sm = document.createElement('small'); sm.textContent = 'プレイ中'; b.appendChild(sm); }
+      box.appendChild(b);
+    }
+  };
+  $('btnCatModel').addEventListener('click', () => { renderModelBtns(); modelOverlay.hidden = false; });
+  $('btnCloseModel').addEventListener('click', () => { modelOverlay.hidden = true; });
+  modelOverlay.addEventListener('click', e => { if (e.target === modelOverlay) modelOverlay.hidden = true; });
+  $('modelBtns').addEventListener('click', e => {
+    const b = e.target.closest('.model-btn');
+    if (!b) return;
+    const id = b.dataset.m;
+    if (!MACHINES[id] || id === MACHINE_ID) return;
+    /* 回転中・停止ボタン押し込み中・演出ロック中・目押しTA中は切り替え不可(データ不整合防止) */
+    if (state.gamePhase !== 'idle' || state.stopHeld || state.pendingBonus || state.xLock || state.ta || state.autoMode) {
+      askConfirm('ゲームの途中は機種を切り替えられません。\nリールが止まってから(オート・目押しTAは終了してから)\nもう一度お試しください。', null, true);
+      return;
+    }
+    askConfirm(MACHINES[id].name + 'に切り替えます。\n今のデータは保存され、戻ればそのまま続きから遊べます。', () => {
+      try {
+        saveGame(); saveMissions();
+        localStorage.setItem(MACHINE_KEY, id);
+        location.reload();
+      } catch (err) {
+        askConfirm('切り替えに失敗しました。', null, true);
+      }
+    });
+  });
+
   /* --- ヘルプ (リール配列 / 小役一覧) --- */
   const helpOverlay = $('helpOverlay');
   const reelGuideOverlay = $('reelGuideOverlay');
@@ -3132,7 +3242,7 @@ function bindEvents() {
     try {
       saveGame(); saveMissions(); // 最新状態を書き出してから収集
       const payload = {
-        app: 'imjuggler_ex6', version: 2, exportedAt: new Date().toISOString(),
+        app: 'imjuggler_ex6', version: 2, machine: MACHINE_ID, exportedAt: new Date().toISOString(),
         save: JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'),
         missions: JSON.parse(localStorage.getItem(MISSION_SAVE_KEY) || 'null')
       };
@@ -3140,7 +3250,7 @@ function bindEvents() {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       const d = new Date();
-      a.download = 'imjuggler_ex6_save_' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') + '.json';
+      a.download = 'imjuggler_ex6_' + MACHINE_ID + '_save_' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') + '.json';
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -3161,10 +3271,15 @@ function bindEvents() {
       try {
         const d = JSON.parse(fr.result);
         if (!d || d.app !== 'imjuggler_ex6' || (!d.save && !d.missions)) throw new Error('bad');
-        askConfirm('インポートすると現在のデータは上書きされ、\nページを再読み込みします。よろしいですか?', () => {
+        /* 機種情報の無い旧エクスポート(v4.2以前)はアイムのデータとして扱う */
+        const impId = (d.machine && MACHINES[d.machine]) ? d.machine : 'aime';
+        const impKeys = machineKeys(impId);
+        const other = impId !== MACHINE_ID ? '\n(' + MACHINES[impId].name + 'のデータです。機種も切り替わります)' : '';
+        askConfirm('インポートすると' + MACHINES[impId].short + 'のデータは上書きされ、\nページを再読み込みします。よろしいですか?' + other, () => {
           try {
-            if (d.save) localStorage.setItem(SAVE_KEY, JSON.stringify(d.save));
-            if (d.missions) localStorage.setItem(MISSION_SAVE_KEY, JSON.stringify(d.missions));
+            if (d.save) localStorage.setItem(impKeys.save, JSON.stringify(d.save));
+            if (d.missions) localStorage.setItem(impKeys.missions, JSON.stringify(d.missions));
+            localStorage.setItem(MACHINE_KEY, impId);
             location.reload();
           } catch (err) {
             askConfirm('インポートに失敗しました。', null, true);
