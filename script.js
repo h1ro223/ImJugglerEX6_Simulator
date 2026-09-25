@@ -892,6 +892,15 @@ function coversAllPresses(setArr) {
   return true;
 }
 
+/* [ゴーゴー3] チャンス目(リーチ目): 実機では3枚掛け・順押し時、ボーナス非当選なら出ない停止形 */
+const CHANCE_ME = [
+  [SYM.BAR, SYM.BAR, SYM.SEVEN], [SYM.SEVEN, SYM.BAR, SYM.SEVEN], [SYM.SEVEN, SYM.BAR, SYM.BAR],
+  [SYM.BAR, SYM.SEVEN, SYM.SEVEN], [SYM.BAR, SYM.SEVEN, SYM.BAR],
+  [SYM.CLOWN, SYM.SEVEN, SYM.CLOWN], [SYM.CLOWN, SYM.BAR, SYM.CLOWN]
+];
+function hasChanceMe(cols) {
+  return LINES.some(rows => CHANCE_ME.some(p => p.every((s, c) => cols[c] && cols[c][rows[c]] === s)));
+}
 function chooseStopPosition(reelIdx, curPos) {
   const stopped = state.cols;
   const nStopped = stopped.filter(Boolean).length;
@@ -914,6 +923,10 @@ function chooseStopPosition(reelIdx, curPos) {
   const candidates = [];
   for (let s = 0; s <= MAX_SLIP; s++) candidates.push({ slip: s, p: modK(base - s) });
 
+  /* ゴーゴー3・3枚掛け・順押しの第3停止で、ボーナス非当選ならチャンス目を出さない
+     (小役の取りこぼしは起こさないよう、ペナルティは小さめ=同じ成立形の中で回避) */
+  const blockChanceMe = MACHINE_ID === 'gogo' && !state.bonusFlag && state.bet === 3 && reelIdx === 2 &&
+    state.pressOrder.length === 2 && state.pressOrder[0] === 0 && state.pressOrder[1] === 1;
   const scoreOf = (cand) => {
     const col = windowCol(reelIdx, cand.p);
     const cols = stopped.slice();
@@ -926,8 +939,9 @@ function chooseStopPosition(reelIdx, curPos) {
       const flagHit = flagRole && wins.some(w =>
         flagRole === 'RARECHERRY' ? (w.role === 'CHERRY' && w.line === 1) : w.role === flagRole);
       if (badWins.length > 0) return 1000 + badWins.length * 10; // 蹴飛ばし対象
-      if (flagHit) return 0;      // フラグ成立形 → 最優先
-      return 10;                  // ハズレ形(クリーン)
+      const cm = (blockChanceMe && hasChanceMe(cols)) ? 5 : 0; // 非当選時のチャンス目は回避
+      if (flagHit) return 0 + cm;      // フラグ成立形 → 最優先
+      return 10 + cm;                  // ハズレ形(クリーン)
     }
 
     /* 第1・第2停止: 非成立チェリーの蹴飛ばし + フラグ達成可能ライン数を最大化 */
@@ -2551,7 +2565,7 @@ function autoNextGame(delayMs) {
         autoSchedule(() => {
           setMaxBet();
           if (state.bet === 0) { autoNextGame(aMs(1000)); return; }
-          autoSchedule(() => leverOn(0), aMs(AUTO_LEVER_MS));
+          autoSchedule(autoLever, aMs(AUTO_LEVER_MS));
         }, aMs(AUTO_RENT_MS));
         return;
       }
@@ -2559,9 +2573,24 @@ function autoNextGame(delayMs) {
       if (state.bet === 0) { autoNextGame(aMs(1000)); return; } // 投入できなければリトライ
     }
     /* BET(リプレイ成立時は自動BET確定)からAUTO_LEVER_MS(1秒)後にレバーON */
-    autoSchedule(() => leverOn(0), aMs(AUTO_LEVER_MS));
+    autoSchedule(autoLever, aMs(AUTO_LEVER_MS));
   }, delayMs);
 }
+/* レバーON。何かのロックで弾かれた(=まだidleのまま)なら次ゲーム処理からやり直す
+   (以前はここで弾かれるとオートの予約が途切れ、ONのまま止まることがあった) */
+function autoLever() {
+  leverOn(0);
+  if (state.autoMode && state.gamePhase === 'idle') autoNextGame(aMs(250));
+}
+/* オートの見張り: 予約が1件も無いのに進んでいない状態を検知したら再開する(保険) */
+setInterval(() => {
+  if (!state.autoMode || autoTimers.length > 0) return;
+  if (state.gamePhase === 'idle') { autoNextGame(aMs(250)); return; }
+  if (state.gamePhase === 'spinning' && state.stopsInitiated < 3) {
+    const next = [0, 1, 2].find(i => reels[i] && reels[i].mode === 'spin');
+    if (next !== undefined) autoPress(next);
+  }
+}, 1500);
 
 /* ================= メダル表示のカウントアップ演出 ================= */
 /* 実際の値(state)と表示値(disp)を分離し、1枚ずつ増減して見せる */
