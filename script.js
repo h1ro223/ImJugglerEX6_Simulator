@@ -15,7 +15,7 @@ const APP_VER = 'v5.0';
 const MACHINE_KEY = 'juggler_machine'; // 選択中の機種ID (index.htmlの<head>内スクリプトと同じキー)
 const MACHINES = {
   aime: {
-    name: 'アイムジャグラーEX (6号機)',
+    name: 'ネオアイムジャグラーEX',
     short: 'アイム',
     settings: [ // 本家6号機アイムジャグラーEX準拠
       { bb: 1/273.1, rb: 1/439.8, grape: 1/6.02 },
